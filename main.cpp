@@ -8,10 +8,7 @@ using namespace std;
 
 int main()
 {
-    // 测试从列表推导类型
-
-    Vec v1={1.0f, 2.0f, 3.0f, 4.0f};
-    cout << "v1.x(): " << v1.x() << ", v1.y(): " << v1.y() << endl;
-    
+    int a = Dot(Vec(1, 2, 3), Vec(4, 0.2, 0));
+    cout << a << endl;
     return 0;
 }
