@@ -22,10 +22,7 @@ namespace Detail
 
         consteval ComplieTimeIndexCheck(std::size_t i) : value(i)
         {
-            if (i >= Limit)
-            {
-                throw std::out_of_range("Vec index out of bounds!");
-            }
+            static_assert(i >= Limit,"Vec index out of bounds!") ;
         }
     };
 }
@@ -45,29 +42,31 @@ public:
 
 public:
     // 构造
-    Vec() { data.fill(0); }
+    constexpr Vec() { data.fill(0); }
+
+    constexpr Vec(T num){data.fill(num);}
 
     template <typename... Args>
-    Vec(const Args &...args)
+    constexpr Vec(const Args &...args)
         requires(sizeof...(args) == N && (std::convertible_to<Args, T> && ...))
     {
         data = std::array<T, N>{static_cast<T>(args)...};
     };
 
-    Vec(const Vec &other) = default;
+    constexpr Vec(const Vec &other) = default;
 
-    Vec(Vec &&other) = default;
+    constexpr Vec(Vec &&other) = default;
 
-    Vec(const T *arr)
+    constexpr Vec(const T *arr)
     {
         for (size_t i = 0; i < N; ++i)
             data[i] = arr[i];
     }
 
-    Vec(const std::array<T, N> &array) : data(array) {}
+    constexpr Vec(const std::array<T, N> &array) : data(array) {}
 
     template <typename U>
-    Vec(const std::list<U> &list)
+    constexpr Vec(const std::list<U> &list) 
         requires std::convertible_to<U, T>
     {
         if (list.size() != N)
@@ -78,7 +77,7 @@ public:
     }
 
     template <typename U>
-    Vec(const std::vector<U> &vector)
+    constexpr Vec(const std::vector<U> &vector)
         requires std::convertible_to<U, T>
     {
         if (vector.size() != N)
@@ -88,7 +87,7 @@ public:
         std::copy(vector.begin(), vector.end(), data.begin());
     }
 
-    Vec(std::span<const T, N> s)
+    constexpr Vec(std::span<const T, N> s)
     {
         std::copy(s.begin(), s.end(), data.begin());
     }
@@ -98,7 +97,7 @@ public:
 
     // 类型转换构造函数
     template <typename U>
-    Vec(const Vec<U, N> &other)
+    constexpr Vec(const Vec<U, N> &other)
         requires std::convertible_to<U, T>
     {
         for (size_t i = 0; i < N; ++i)
@@ -133,40 +132,40 @@ public:
     explicit operator const T *() const { return data.data(); }
 
     // 访问
-    T &operator[](std::size_t index)
+    constexpr T &operator[](std::size_t index)
     {
         return data[index];
     }
 
-    const T &operator[](std::size_t index) const
+    constexpr const T &operator[](std::size_t index) const
     {
         return data[index];
     }
 
-    T &operator[](Detail::ComplieTimeIndexCheck<N> index)
+    constexpr T &operator[](Detail::ComplieTimeIndexCheck<N> index)
     {
         return data[index.value];
     }
 
-    T &x()
+    constexpr T &x()
         requires(0 < N)
     {
         return data[0];
     }
 
-    T &y()
+    constexpr T &y()
         requires(1 < N)
     {
         return data[1];
     }
 
-    T &z()
+    constexpr T &z()
         requires(2 < N)
     {
         return data[2];
     }
 
-    T &w()
+    constexpr T &w()
         requires(3 < N)
     {
         return data[3];
@@ -179,7 +178,7 @@ public:
 
     // 加法
     template <Detail::Numeric U>
-    friend auto operator+(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
+    constexpr friend auto operator+(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
     {
         using ResultType = std::common_type_t<T, U>;
         Vec<ResultType, N> result;
@@ -190,19 +189,30 @@ public:
         return result;
     }
 
-    Vec operator+(const T &value) const
-    {
-        Vec result = *this;
-        for (size_t i = 0; i < N; ++i)
-        {
-            result.data[i] += value;
+    template <typename LType, typename RType>
+    requires (
+        (std::same_as<LType, Vec<T, N>> && Detail::Numeric<RType>) || 
+        (Detail::Numeric<LType> && std::same_as<RType, Vec<T, N>>)
+    )
+    constexpr friend auto operator+(const LType& lhs, const RType& rhs) {
+        using ScalarType = std::conditional_t<Detail::Numeric<LType>, LType, RType>;
+        using ResultType = std::common_type_t<T, ScalarType>;
+        
+        Vec<ResultType, N> result;
+        
+        if constexpr (std::same_as<LType, Vec<T, N>>) {
+            for (size_t i = 0; i < N; ++i) 
+                result.data[i] = static_cast<ResultType>(lhs.data[i]) + static_cast<ResultType>(rhs);
+        } else {
+            for (size_t i = 0; i < N; ++i) 
+                result.data[i] = static_cast<ResultType>(lhs) + static_cast<ResultType>(rhs.data[i]);
         }
         return result;
     }
 
     // 减法
     template <Detail::Numeric U>
-    friend auto operator-(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
+    constexpr friend auto operator-(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
     {
         using ResultType = std::common_type_t<T, U>;
         Vec<ResultType, N> result;
@@ -213,19 +223,30 @@ public:
         return result;
     }
 
-    Vec operator-(const T &value) const
-    {
-        Vec result = *this;
-        for (size_t i = 0; i < N; ++i)
-        {
-            result.data[i] -= value;
+    template <typename LType, typename RType>
+    requires (
+        (std::same_as<LType, Vec<T, N>> && Detail::Numeric<RType>) || 
+        (Detail::Numeric<LType> && std::same_as<RType, Vec<T, N>>)
+    )
+    constexpr friend auto operator-(const LType& lhs, const RType& rhs) {
+        using ScalarType = std::conditional_t<Detail::Numeric<LType>, LType, RType>;
+        using ResultType = std::common_type_t<T, ScalarType>;
+        
+        Vec<ResultType, N> result;
+        
+        if constexpr (std::same_as<LType, Vec<T, N>>) {
+            for (size_t i = 0; i < N; ++i) 
+                result.data[i] = static_cast<ResultType>(lhs.data[i]) - static_cast<ResultType>(rhs);
+        } else {
+            for (size_t i = 0; i < N; ++i) 
+                result.data[i] = static_cast<ResultType>(lhs) - static_cast<ResultType>(rhs.data[i]);
         }
         return result;
     }
 
     // 乘法
     template <Detail::Numeric U>
-    friend auto operator*(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
+    constexpr friend auto operator*(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
     {
         using ResultType = std::common_type_t<T, U>;
         Vec<ResultType, N> result;
@@ -236,19 +257,31 @@ public:
         return result;
     }
 
-    Vec operator*(const T &value) const
-    {
-        Vec result = *this;
-        for (size_t i = 0; i < N; ++i)
-        {
-            result.data[i] *= value;
+    template <typename LType, typename RType>
+    requires (
+        (std::same_as<LType, Vec<T, N>> && Detail::Numeric<RType>) || 
+        (Detail::Numeric<LType> && std::same_as<RType, Vec<T, N>>)
+    )
+    constexpr friend auto operator*(const LType& lhs, const RType& rhs) {
+        using ScalarType = std::conditional_t<Detail::Numeric<LType>, LType, RType>;
+        using ResultType = std::common_type_t<T, ScalarType>;
+        
+        Vec<ResultType, N> result;
+        
+        if constexpr (std::same_as<LType, Vec<T, N>>) {
+            for (size_t i = 0; i < N; ++i) 
+                result.data[i] = static_cast<ResultType>(lhs.data[i]) * static_cast<ResultType>(rhs);
+        } else {
+            for (size_t i = 0; i < N; ++i) 
+                result.data[i] = static_cast<ResultType>(lhs) * static_cast<ResultType>(rhs.data[i]);
         }
         return result;
     }
 
+
     // 除法
     template <Detail::Numeric U>
-    friend auto operator/(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
+    constexpr friend auto operator/(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
     {
         using ResultType = std::common_type_t<T, U>;
         Vec<ResultType, N> result;
@@ -259,18 +292,30 @@ public:
         return result;
     }
 
-    Vec operator/(const T &value) const
-    {
-        Vec result = *this;
-        for (size_t i = 0; i < N; ++i)
-        {
-            result.data[i] /= value;
+    template <typename LType, typename RType>
+    requires (
+        (std::same_as<LType, Vec<T, N>> && Detail::Numeric<RType>) || 
+        (Detail::Numeric<LType> && std::same_as<RType, Vec<T, N>>)
+    )
+    constexpr friend auto operator/(const LType& lhs, const RType& rhs) {
+        using ScalarType = std::conditional_t<Detail::Numeric<LType>, LType, RType>;
+        using ResultType = std::common_type_t<T, ScalarType>;
+        
+        Vec<ResultType, N> result;
+        
+        if constexpr (std::same_as<LType, Vec<T, N>>) {
+            for (size_t i = 0; i < N; ++i) 
+                result.data[i] = static_cast<ResultType>(lhs.data[i]) / static_cast<ResultType>(rhs);
+        } else {
+            for (size_t i = 0; i < N; ++i) 
+                result.data[i] = static_cast<ResultType>(lhs) / static_cast<ResultType>(rhs.data[i]);
         }
         return result;
     }
 
+ 
     // 叉乘
-    Vec operator^(const Vec &other) const
+    constexpr Vec operator^(const Vec &other) const
         requires(N == 3)
     {
         return Vec(
@@ -280,7 +325,7 @@ public:
     }
 
     // 取反
-    Vec operator-()
+    constexpr Vec operator-()
     {
         Vec result{};
         for (size_t i = 0; i < N; ++i)
@@ -291,7 +336,7 @@ public:
     }
 
     // 逐元素除法
-    Vec operator/(const Vec &other) const
+    constexpr Vec operator/(const Vec &other) const
     {
         Vec result{};
         for (size_t i = 0; i < N; ++i)
@@ -302,7 +347,7 @@ public:
     }
 
     // 复合赋值操作符
-    Vec &operator+=(const Vec &other)
+    constexpr Vec &operator+=(const Vec &other)
     {
         for (size_t i = 0; i < N; ++i)
         {
@@ -311,7 +356,7 @@ public:
         return *this;
     }
 
-    Vec &operator+=(const T &value)
+    constexpr Vec &operator+=(const T &value)
     {
         for (size_t i = 0; i < N; ++i)
         {
@@ -320,7 +365,7 @@ public:
         return *this;
     }
 
-    Vec &operator-=(const Vec &other)
+    constexpr Vec &operator-=(const Vec &other)
     {
         for (size_t i = 0; i < N; ++i)
         {
@@ -329,7 +374,7 @@ public:
         return *this;
     }
 
-    Vec &operator-=(const T &value)
+    constexpr Vec &operator-=(const T &value)
     {
         for (size_t i = 0; i < N; ++i)
         {
@@ -338,7 +383,7 @@ public:
         return *this;
     }
 
-    Vec &operator*=(const Vec &other)
+    constexpr Vec &operator*=(const Vec &other)
     {
         for (size_t i = 0; i < N; ++i)
         {
@@ -347,7 +392,7 @@ public:
         return *this;
     }
 
-    Vec &operator*=(const T &value)
+    constexpr Vec &operator*=(const T &value)
     {
         for (size_t i = 0; i < N; ++i)
         {
@@ -356,7 +401,7 @@ public:
         return *this;
     }
 
-    Vec &operator/=(const Vec &other)
+    constexpr Vec &operator/=(const Vec &other)
     {
         for (size_t i = 0; i < N; ++i)
         {
@@ -365,7 +410,7 @@ public:
         return *this;
     }
 
-    Vec &operator/=(const T &value)
+    constexpr Vec &operator/=(const T &value)
     {
         for (size_t i = 0; i < N; ++i)
         {
@@ -374,7 +419,7 @@ public:
         return *this;
     }
 
-    Vec &operator^=(const Vec &other)
+    constexpr Vec &operator^=(const Vec &other)
         requires(N == 3)
     {
         T x = data[1] * other.data[2] - data[2] * other.data[1];
@@ -386,7 +431,7 @@ public:
         return *this;
     };
 
-    Vec &operator^=(const T &value)
+    constexpr Vec &operator^=(const T &value)
         requires(N == 3)
     {
         T x = data[1] * value - data[2] * value;
@@ -398,26 +443,15 @@ public:
         return *this;
     };
 
-    // 模长
-    T Length() const
-    {
-        T sum = 0;
-        for (size_t i = 0; i < N; ++i)
-        {
-            sum += data[i] * data[i];
-        }
-        return sqrt(sum);
+    // 转换方法
+    auto ToArray() const { return data; }
+
+    auto ToList() const {
+        return std::list<T>(data.begin(), data.end());
     }
 
-    // 归一化
-    Vec Normalize() const
-    {
-        T len = Length();
-        if (len > 0)
-        {
-            return (*this) / len;
-        }
-        return *this;
+    auto ToVector() const {
+        return std::vector<T>(data.begin(), data.end());
     }
 
     // 迭代器支持
@@ -432,12 +466,36 @@ public:
     // 查询方法
     static constexpr size_t size() noexcept { return N; }
 
-    static constexpr size_t bytes() noexcept { return N * sizeof(T); }
+    static constexpr size_t size_in_bytes() noexcept { return N * sizeof(T); }
 
     static const type_info &type() noexcept { return typeid(Vec<T, N>); }
 
     static const type_info &value_type() noexcept { return typeid(T); }
 };
+
+// 模长
+template <Detail::Numeric T, std::size_t N>
+T Length(const Vec<T, N>& v) 
+{
+    T sum = 0;
+    for (size_t i = 0; i < N; ++i)
+    {
+        sum += v[i] * v[i];
+    }
+    return sqrt(sum);
+}
+
+// 归一化
+template <Detail::Numeric T, std::size_t N>
+Vec<T, N> Normalize(const Vec<T, N>& v) 
+{
+    T len = Length(v);
+    if (len > 0)
+    {
+        return (v) / len;
+    }
+    return v;
+}
 
 // 点积
 template <typename... Vecs>
@@ -474,33 +532,26 @@ auto Cat(const Vecs &...vecs)
     return result;
 }
 
-// 标量左乘
-template <Detail::Numeric Scalar, Detail::Numeric T, std::size_t N>
-auto operator*(const Scalar &s, const Vec<T, N> &v)
-{
-    return v * s;
-}
-
 // 计算距离
 template <Detail::Numeric T, Detail::Numeric U, std::size_t N>
-auto Distance(const Vec<T, N>& a, const Vec<U, N>& b) {
+auto Distance(const Vec<T, N> &a, const Vec<U, N> &b)
+{
     using CalcT = std::common_type_t<T, U>;
-    Vec<CalcT, N> diff; 
-    for (size_t i = 0; i < N; ++i) {
+    Vec<CalcT, N> diff;
+    for (size_t i = 0; i < N; ++i)
+    {
         diff[i] = static_cast<CalcT>(a[i]) - static_cast<CalcT>(b[i]);
     }
 
     return std::sqrt(Dot(diff, diff));
 }
 
-//线性插值
+// 线性插值
 template <Detail::Numeric T, Detail::Numeric U, std::size_t N, typename V>
 auto Lerp(const Vec<T, N> &a, const Vec<U, N> &b, V t)
 {
     using ResultT = std::common_type_t<T, U, V>;
-    // 强制转换为结果类型进行计算，确保精度并解决类型匹配问题
-    return Vec<ResultT, N>(a) * (static_cast<ResultT>(1.0) - static_cast<ResultT>(t)) 
-         + Vec<ResultT, N>(b) * static_cast<ResultT>(t);
+    return Vec<ResultT, N>(a) * (static_cast<ResultT>(1.0) - static_cast<ResultT>(t)) + Vec<ResultT, N>(b) * static_cast<ResultT>(t);
 }
 
 // 2. 投影 Project
@@ -545,3 +596,17 @@ Vec(std::array<T, N>) -> Vec<T, N>;
 
 template <typename T, std::size_t N>
 Vec(std::span<T, N>) -> Vec<T, N>;
+
+// 常用向量类型
+using Vec2i = Vec<int, 2>;
+using Vec2f = Vec<float, 2>;
+using Vec2d = Vec<double, 2>;
+using Vec2l = Vec<long, 2>;
+using Vec3i = Vec<int, 3>;
+using Vec3f = Vec<float, 3>;
+using Vec3d = Vec<double, 3>;
+using Vec3l = Vec<long, 3>;
+using Vec4i = Vec<int, 4>;
+using Vec4f = Vec<float, 4>;
+using Vec4d = Vec<double, 4>;
+using Vec4l = Vec<long, 4>;
