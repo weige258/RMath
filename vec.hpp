@@ -6,21 +6,19 @@
 #include <iostream>
 #include <cmath>
 
-using namespace std;
-
 namespace Detail
 {
     // 概念：Numeric 表示数值类型（整数或浮点数）
     template <typename T>
-    concept Numeric = std::is_arithmetic_v<T>;
+    concept NumericVec = std::is_arithmetic_v<T>;
 
     // 结构体：ComplieTimeIndexCheck 用于编译期检查索引是否超出范围
     template <std::size_t Limit>
-    struct ComplieTimeIndexCheck
+    struct ComplieTimeIndexCheckVec
     {
         std::size_t value;
 
-        consteval ComplieTimeIndexCheck(std::size_t i) : value(i)
+        consteval ComplieTimeIndexCheckVec(std::size_t i) : value(i)
         {
             static_assert(i >= Limit, "Vec index out of bounds!");
         }
@@ -28,7 +26,7 @@ namespace Detail
 }
 
 // Vec 对象
-template <Detail::Numeric T, std::size_t N>
+template <Detail::NumericVec T, std::size_t N>
 struct Vec
 {
 protected:
@@ -37,7 +35,7 @@ protected:
 
 public:
     using value_type_alias = T;
-    template <Detail::Numeric U, std::size_t M>
+    template <Detail::NumericVec U, std::size_t M>
     friend struct Vec;
 
 public:
@@ -45,6 +43,10 @@ public:
     constexpr Vec() { data.fill(0); }
 
     constexpr Vec(T num) { data.fill(num); }
+
+    constexpr Vec(const Vec &other) = default;
+
+    constexpr Vec(Vec &&other) = default;
 
     constexpr Vec(std::initializer_list<T> list)
     {
@@ -61,10 +63,6 @@ public:
     {
         data = std::array<T, N>{static_cast<T>(args)...};
     };
-
-    constexpr Vec(const Vec &other) = default;
-
-    constexpr Vec(Vec &&other) = default;
 
     constexpr Vec(const T *arr)
     {
@@ -104,7 +102,7 @@ public:
     // 析构
     ~Vec() = default;
 
-    // 类型转换构造函数
+    // 类型转换
     template <typename U>
     constexpr Vec(const Vec<U, N> &other)
         requires std::convertible_to<U, T>
@@ -114,8 +112,9 @@ public:
             data[i] = static_cast<T>(other.data[i]);
         }
     }
+
     template <typename U>
-        requires Detail::Numeric<U>
+        requires Detail::NumericVec<U>
     operator std::array<U, N>() const
     {
         std::array<U, N> result;
@@ -127,7 +126,7 @@ public:
     }
 
     template <typename U>
-        requires Detail::Numeric<U>
+        requires Detail::NumericVec<U>
     operator std::vector<U>() const
     {
         std::vector<U> result;
@@ -140,7 +139,7 @@ public:
     }
 
     template <typename U>
-        requires Detail::Numeric<U>
+        requires Detail::NumericVec<U>
     operator std::list<U>() const
     {
         std::list<U> result;
@@ -151,7 +150,6 @@ public:
         return result;
     }
 
-    // 改进后的 std::span 转换：通常 span 要求类型严格匹配或底层兼容
     operator std::span<const T, N>() const
     {
         return std::span<const T, N>(data);
@@ -172,7 +170,7 @@ public:
         return data[index];
     }
 
-    constexpr T &operator[](Detail::ComplieTimeIndexCheck<N> index)
+    constexpr T &operator[](Detail::ComplieTimeIndexCheckVec<N> index)
     {
         return data[index.value];
     }
@@ -207,7 +205,7 @@ public:
     Vec &operator=(Vec &&other) = default;
 
     // 加法
-    template <Detail::Numeric U>
+    template <Detail::NumericVec U>
     constexpr friend auto operator+(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
     {
         using ResultType = std::common_type_t<T, U>;
@@ -221,11 +219,11 @@ public:
 
     template <typename LType, typename RType>
         requires(
-            (std::same_as<LType, Vec<T, N>> && Detail::Numeric<RType>) ||
-            (Detail::Numeric<LType> && std::same_as<RType, Vec<T, N>>))
+            (std::same_as<LType, Vec<T, N>> && Detail::NumericVec<RType>) ||
+            (Detail::NumericVec<LType> && std::same_as<RType, Vec<T, N>>))
     constexpr friend auto operator+(const LType &lhs, const RType &rhs)
     {
-        using ScalarType = std::conditional_t<Detail::Numeric<LType>, LType, RType>;
+        using ScalarType = std::conditional_t<Detail::NumericVec<LType>, LType, RType>;
         using ResultType = std::common_type_t<T, ScalarType>;
 
         Vec<ResultType, N> result;
@@ -244,7 +242,7 @@ public:
     }
 
     // 减法
-    template <Detail::Numeric U>
+    template <Detail::NumericVec U>
     constexpr friend auto operator-(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
     {
         using ResultType = std::common_type_t<T, U>;
@@ -258,11 +256,11 @@ public:
 
     template <typename LType, typename RType>
         requires(
-            (std::same_as<LType, Vec<T, N>> && Detail::Numeric<RType>) ||
-            (Detail::Numeric<LType> && std::same_as<RType, Vec<T, N>>))
+            (std::same_as<LType, Vec<T, N>> && Detail::NumericVec<RType>) ||
+            (Detail::NumericVec<LType> && std::same_as<RType, Vec<T, N>>))
     constexpr friend auto operator-(const LType &lhs, const RType &rhs)
     {
-        using ScalarType = std::conditional_t<Detail::Numeric<LType>, LType, RType>;
+        using ScalarType = std::conditional_t<Detail::NumericVec<LType>, LType, RType>;
         using ResultType = std::common_type_t<T, ScalarType>;
 
         Vec<ResultType, N> result;
@@ -281,7 +279,7 @@ public:
     }
 
     // 乘法
-    template <Detail::Numeric U>
+    template <Detail::NumericVec U>
     constexpr friend auto operator*(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
     {
         using ResultType = std::common_type_t<T, U>;
@@ -295,11 +293,11 @@ public:
 
     template <typename LType, typename RType>
         requires(
-            (std::same_as<LType, Vec<T, N>> && Detail::Numeric<RType>) ||
-            (Detail::Numeric<LType> && std::same_as<RType, Vec<T, N>>))
+            (std::same_as<LType, Vec<T, N>> && Detail::NumericVec<RType>) ||
+            (Detail::NumericVec<LType> && std::same_as<RType, Vec<T, N>>))
     constexpr friend auto operator*(const LType &lhs, const RType &rhs)
     {
-        using ScalarType = std::conditional_t<Detail::Numeric<LType>, LType, RType>;
+        using ScalarType = std::conditional_t<Detail::NumericVec<LType>, LType, RType>;
         using ResultType = std::common_type_t<T, ScalarType>;
 
         Vec<ResultType, N> result;
@@ -318,7 +316,7 @@ public:
     }
 
     // 除法
-    template <Detail::Numeric U>
+    template <Detail::NumericVec U>
     constexpr friend auto operator/(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
     {
         using ResultType = std::common_type_t<T, U>;
@@ -332,11 +330,11 @@ public:
 
     template <typename LType, typename RType>
         requires(
-            (std::same_as<LType, Vec<T, N>> && Detail::Numeric<RType>) ||
-            (Detail::Numeric<LType> && std::same_as<RType, Vec<T, N>>))
+            (std::same_as<LType, Vec<T, N>> && Detail::NumericVec<RType>) ||
+            (Detail::NumericVec<LType> && std::same_as<RType, Vec<T, N>>))
     constexpr friend auto operator/(const LType &lhs, const RType &rhs)
     {
-        using ScalarType = std::conditional_t<Detail::Numeric<LType>, LType, RType>;
+        using ScalarType = std::conditional_t<Detail::NumericVec<LType>, LType, RType>;
         using ResultType = std::common_type_t<T, ScalarType>;
 
         Vec<ResultType, N> result;
@@ -471,18 +469,6 @@ public:
         return *this;
     };
 
-    constexpr Vec &operator^=(const T &value)
-        requires(N == 3)
-    {
-        T x = data[1] * value - data[2] * value;
-        T y = data[2] * value - data[0] * value;
-        T z = data[0] * value - data[1] * value;
-        data[0] = x;
-        data[1] = y;
-        data[2] = z;
-        return *this;
-    };
-
     // 迭代器支持
     auto begin() noexcept { return data.begin(); }
     auto end() noexcept { return data.end(); }
@@ -497,13 +483,13 @@ public:
 
     static constexpr size_t size_in_bytes() noexcept { return N * sizeof(T); }
 
-    static const type_info &type() noexcept { return typeid(Vec<T, N>); }
+    static const std::type_info &type() noexcept { return typeid(Vec<T, N>); }
 
-    static const type_info &value_type() noexcept { return typeid(T); }
+    static const  std::type_info &value_type() noexcept { return typeid(T); }
 };
 
 // 模长
-template <Detail::Numeric T, std::size_t N>
+template <Detail::NumericVec T, std::size_t N>
 T Length(const Vec<T, N> &v)
 {
     T sum = 0;
@@ -515,7 +501,7 @@ T Length(const Vec<T, N> &v)
 }
 
 // 归一化
-template <Detail::Numeric T, std::size_t N>
+template <Detail::NumericVec T, std::size_t N>
 Vec<T, N> Normalize(const Vec<T, N> &v)
 {
     T len = Length(v);
@@ -523,7 +509,7 @@ Vec<T, N> Normalize(const Vec<T, N> &v)
     {
         return (v) / len;
     }
-    return v;
+    return Vec<T, N>{};
 }
 
 // 点积
@@ -562,7 +548,7 @@ auto Cat(const Vecs &...vecs)
 }
 
 // 计算距离
-template <Detail::Numeric T, Detail::Numeric U, std::size_t N>
+template <Detail::NumericVec T, Detail::NumericVec U, std::size_t N>
 auto Distance(const Vec<T, N> &a, const Vec<U, N> &b)
 {
     using CalcT = std::common_type_t<T, U>;
@@ -576,7 +562,7 @@ auto Distance(const Vec<T, N> &a, const Vec<U, N> &b)
 }
 
 // 线性插值
-template <Detail::Numeric T, Detail::Numeric U, std::size_t N, typename V>
+template <Detail::NumericVec T, Detail::NumericVec U, std::size_t N, typename V>
 auto Lerp(const Vec<T, N> &a, const Vec<U, N> &b, V t)
 {
     using ResultT = std::common_type_t<T, U, V>;
@@ -584,7 +570,7 @@ auto Lerp(const Vec<T, N> &a, const Vec<U, N> &b, V t)
 }
 
 // 2. 投影 Project
-template <Detail::Numeric T, Detail::Numeric U, std::size_t N>
+template <Detail::NumericVec T, Detail::NumericVec U, std::size_t N>
 auto Project(const Vec<T, N> &a, const Vec<U, N> &b)
 {
     using ResultT = std::common_type_t<T, U>;
@@ -594,7 +580,7 @@ auto Project(const Vec<T, N> &a, const Vec<U, N> &b)
 }
 
 // 3. 反射 Reflect
-template <Detail::Numeric T, Detail::Numeric U, std::size_t N>
+template <Detail::NumericVec T, Detail::NumericVec U, std::size_t N>
 auto Reflect(const Vec<T, N> &a, const Vec<U, N> &n)
 {
     using ResultT = std::common_type_t<T, U>;
@@ -602,8 +588,8 @@ auto Reflect(const Vec<T, N> &a, const Vec<U, N> &n)
 }
 
 // 输出运算符
-template <Detail::Numeric T, std::size_t N>
-ostream &operator<<(ostream &os, const Vec<T, N> &vec)
+template <Detail::NumericVec T, std::size_t N>
+ std::ostream &operator<<(std::ostream &os, const Vec<T, N> &vec)
 {
     os << "(";
     for (size_t i = 0; i < N; ++i)
@@ -617,7 +603,7 @@ ostream &operator<<(ostream &os, const Vec<T, N> &vec)
 }
 
 // 类型推导申明
-template <Detail::Numeric... Args>
+template <Detail::NumericVec... Args>
 Vec(Args...) -> Vec<std::common_type_t<Args...>, sizeof...(Args)>;
 
 template <typename T, std::size_t N>
