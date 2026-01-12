@@ -1,21 +1,24 @@
 #include <concepts>
 #include <array>
+#include <cmath>
+#include "range.hpp"
 
 namespace Detail
 {
     template <typename T>
     concept NumericMat = std::is_arithmetic_v<T>;
-    
-    //多维initlist构造行数据
+
+    // 多维initlist构造行数据
     template <Detail::NumericMat T, size_t Col>
-    struct RowData {
+    struct RowData
+    {
         std::array<T, Col> row_values;
 
         template <typename... Args>
-        constexpr RowData(Args&&... args) 
+        constexpr RowData(Args &&...args)
             : row_values{static_cast<T>(args)...} {}
     };
-}
+};
 
 template <Detail::NumericMat T, size_t Row, size_t Col>
 struct Mat
@@ -48,11 +51,15 @@ public:
         }
     }
 
-    constexpr Mat(std::initializer_list<Detail::RowData<T, Col>> list) {
-        if (list.size() != Row) throw std::runtime_error("Row count mismatch");
+    constexpr Mat(std::initializer_list<Detail::RowData<T, Col>> list)
+    {
+        if (list.size() != Row)
+            throw std::runtime_error("Row count mismatch");
         size_t r = 0;
-        for (const auto& row : list) {
-            for (size_t c = 0; c < Col; ++c) {
+        for (const auto &row : list)
+        {
+            for (size_t c = 0; c < Col; ++c)
+            {
                 data[r * Col + c] = row.row_values[c];
             }
             r++;
@@ -94,38 +101,38 @@ public:
         }
     }
 
-    constexpr Mat(const std::array<T, Row * Col>& arr) : data(arr) {}
+    constexpr Mat(const std::array<T, Row * Col> &arr) : data(arr) {}
 
-    template<typename U>
-    constexpr Mat(const std::list<U>& list)
-    requires std::convertible_to<U, T>
+    template <typename U>
+    constexpr Mat(const std::list<U> &list)
+        requires std::convertible_to<U, T>
     {
         if (list.size() != Row * Col)
         {
             throw std::runtime_error("Size mismatch");
         }
-        
+
         std::copy(list.begin(), list.end(), data.begin());
     }
 
-    template<typename U>
-    constexpr Mat(const std::vector<U>& vec)
-    requires std::convertible_to<U, T>
+    template <typename U>
+    constexpr Mat(const std::vector<U> &vec)
+        requires std::convertible_to<U, T>
     {
         if (vec.size() != Row * Col)
         {
             throw std::runtime_error("Size mismatch");
         }
-        
+
         std::copy(vec.begin(), vec.end(), data.begin());
     }
 
-    constexpr Mat(const std::span<T, Row * Col>& span)
+    constexpr Mat(const std::span<T, Row * Col> &span)
     {
         std::copy(span.begin(), span.end(), data.begin());
     }
 
-    //析构
+    // 析构
     ~Mat() = default;
 
     // 数据转化
@@ -139,29 +146,29 @@ public:
     }
 
     template <typename U>
-    constexpr operator std::array<U, Row * Col>() const
-    requires std::convertible_to<T, U>
+    constexpr operator std::array<U, Row *Col>() const
+        requires std::convertible_to<T, U>
     {
         return std::array<U, Row * Col>(data.begin(), data.end());
     }
 
     template <typename U>
     constexpr operator std::list<U>() const
-    requires std::convertible_to<T, U>
+        requires std::convertible_to<T, U>
     {
         return std::list<U>(data.begin(), data.end());
     }
 
     template <typename U>
     constexpr operator std::vector<U>() const
-    requires std::convertible_to<T, U>
+        requires std::convertible_to<T, U>
     {
         return std::vector<U>(data.begin(), data.end());
     }
 
     template <typename U>
-    constexpr operator std::span<U, Row * Col>() const
-    requires std::convertible_to<T, U>
+    constexpr operator std::span<U, Row *Col>() const
+        requires std::convertible_to<T, U>
     {
         return std::span<U, Row * Col>(data.begin(), data.end());
     }
@@ -171,65 +178,55 @@ public:
     explicit operator const T *() const { return data.data(); }
 
     // 访问
-    constexpr T& operator[] (size_t index)
-    {         
+    constexpr T &operator[](size_t index)
+    {
         return data[index];
     }
 
-    constexpr const T& operator[] (size_t index) const 
-    {         
+    constexpr const T &operator[](size_t index) const
+    {
         return data[index];
     }
 
-    constexpr T& operator[] (size_t row,size_t col)
-    {         
+    constexpr T &operator[](size_t row, size_t col)
+    {
         return data[row * Col + col];
     }
 
-    constexpr const T& operator[] (size_t row,size_t col) const
-    {         
+    constexpr const T &operator[](size_t row, size_t col) const
+    {
         return data[row * Col + col];
     }
-
-    constexpr T& operator() (size_t index)
-    {         
-        return data[index];
+    
+    const auto& operator[](Range<Row> rr,Range<Col> rc) const
+    {
+        
     }
 
-    constexpr const T& operator() (size_t index) const 
-    {         
-        return data[index];
-    }
-
-    constexpr T& operator() (size_t row,size_t col)
-    {         
-        return data[row * Col + col];
-    }
-
-    constexpr const T& operator() (size_t row,size_t col) const
-    {         
-        return data[row * Col + col];
-    }
 };
 
 // 输出运算符
-template<Detail::NumericMat T, size_t Row, size_t Col>
-std::ostream& operator << (std::ostream& os, const Mat<T, Row, Col>& mat)
+template <Detail::NumericMat T, size_t Row, size_t Col>
+std::ostream &operator<<(std::ostream &os, const Mat<T, Row, Col> &mat)
 {
     os << "[";
-    for (size_t r = 0; r < Row; ++r) {
-        if (r > 0) os << " ";    
-        for (size_t c = 0; c < Col; ++c) {
+    for (size_t r = 0; r < Row; ++r)
+    {
+        if (r > 0)
+            os << " ";
+        for (size_t c = 0; c < Col; ++c)
+        {
             os << mat[r * Col + c];
-            if (c < Col - 1) {
+            if (c < Col - 1)
+            {
                 os << ", ";
             }
         }
-        if (r < Row - 1) {
+        if (r < Row - 1)
+        {
             os << ",\n";
         }
     }
     os << "]";
     return os;
 }
-
