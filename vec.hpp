@@ -29,9 +29,9 @@ namespace Detail
 template <Detail::NumericVec T, std::size_t N>
 struct Vec
 {
-protected:
+private:
     // 数据
-    std::array<T, N> data;
+    std::array<T, N> _data;
 
 public:
     using value_type_alias = T;
@@ -40,9 +40,9 @@ public:
 
 public:
     // 构造
-    constexpr Vec() { data.fill(0); }
+    constexpr Vec() { _data.fill(0); }
 
-    constexpr Vec(T num) { data.fill(num); }
+    constexpr Vec(T num) { _data.fill(num); }
 
     constexpr Vec(const Vec &other) = default;
 
@@ -54,23 +54,23 @@ public:
         {
             throw std::runtime_error("Initializer list size mismatch");
         }
-        std::copy(list.begin(), list.end(), data.begin());
+        std::copy(list.begin(), list.end(), _data.begin());
     }
 
     template <typename... Args>
     constexpr Vec(const Args &...args)
         requires(sizeof...(args) == N && (std::convertible_to<Args, T> && ...))
     {
-        data = std::array<T, N>{static_cast<T>(args)...};
+        _data = std::array<T, N>{static_cast<T>(args)...};
     };
 
     constexpr Vec(const T *arr)
     {
         for (size_t i = 0; i < N; ++i)
-            data[i] = arr[i];
+            _data[i] = arr[i];
     }
 
-    constexpr Vec(const std::array<T, N> &array) : data(array) {}
+    constexpr Vec(const std::array<T, N> &array) : _data(array) {}
 
     template <typename U>
     constexpr Vec(const std::list<U> &list)
@@ -80,7 +80,7 @@ public:
         {
             throw std::runtime_error("List size does not match vector dimension");
         }
-        std::copy(list.begin(), list.end(), data.begin());
+        std::copy(list.begin(), list.end(), _data.begin());
     }
 
     template <typename U>
@@ -91,12 +91,12 @@ public:
         {
             throw std::runtime_error("Vector size does not match vector dimension");
         }
-        std::copy(vector.begin(), vector.end(), data.begin());
+        std::copy(vector.begin(), vector.end(), _data.begin());
     }
 
     constexpr Vec(std::span<const T, N> s)
     {
-        std::copy(s.begin(), s.end(), data.begin());
+        std::copy(s.begin(), s.end(), _data.begin());
     }
 
     // 析构
@@ -109,7 +109,7 @@ public:
     {
         for (size_t i = 0; i < N; ++i)
         {
-            data[i] = static_cast<T>(other.data[i]);
+            _data[i] = static_cast<T>(other._data[i]);
         }
     }
 
@@ -120,7 +120,7 @@ public:
         std::array<U, N> result;
         for (int i=0;i<N;++i)
         {
-            result[i] = static_cast<U>(data[i]);
+            result[i] = static_cast<U>(_data[i]);
         }
         return result;
     }
@@ -131,7 +131,7 @@ public:
     {
         std::vector<U> result;
         result.reserve(N);
-        for (const auto &val : data)
+        for (const auto &val : _data)
         {
             result.push_back(static_cast<U>(val));
         }
@@ -143,7 +143,7 @@ public:
     operator std::list<U>() const
     {
         std::list<U> result;
-        for (const auto &val : data)
+        for (const auto &val : _data)
         {
             result.push_back(static_cast<U>(val));
         }
@@ -152,51 +152,51 @@ public:
 
     operator std::span<const T, N>() const
     {
-        return std::span<const T, N>(data);
+        return std::span<const T, N>(_data);
     }
 
     // 指针转换
-    explicit operator T *() { return data.data(); }
-    explicit operator const T *() const { return data.data(); }
+    explicit operator T *() { return _data._data(); }
+    explicit operator const T *() const { return _data._data(); }
 
     // 访问
     constexpr T &operator[](std::size_t index)
     {
-        return data[index];
+        return _data[index];
     }
 
     constexpr const T &operator[](std::size_t index) const
     {
-        return data[index];
+        return _data[index];
     }
 
     constexpr T &operator[](Detail::ComplieTimeIndexCheckVec<N> index)
     {
-        return data[index.value];
+        return _data[index.value];
     }
 
     constexpr T &x()
         requires(0 < N)
     {
-        return data[0];
+        return _data[0];
     }
 
     constexpr T &y()
         requires(1 < N)
     {
-        return data[1];
+        return _data[1];
     }
 
     constexpr T &z()
         requires(2 < N)
     {
-        return data[2];
+        return _data[2];
     }
 
     constexpr T &w()
         requires(3 < N)
     {
-        return data[3];
+        return _data[3];
     }
 
     // 赋值
@@ -212,7 +212,7 @@ public:
         Vec<ResultType, N> result;
         for (size_t i = 0; i < N; ++i)
         {
-            result.data[i] = static_cast<ResultType>(lhs.data[i]) + static_cast<ResultType>(rhs.data[i]);
+            result._data[i] = static_cast<ResultType>(lhs._data[i]) + static_cast<ResultType>(rhs._data[i]);
         }
         return result;
     }
@@ -231,12 +231,12 @@ public:
         if constexpr (std::same_as<LType, Vec<T, N>>)
         {
             for (size_t i = 0; i < N; ++i)
-                result.data[i] = static_cast<ResultType>(lhs.data[i]) + static_cast<ResultType>(rhs);
+                result._data[i] = static_cast<ResultType>(lhs._data[i]) + static_cast<ResultType>(rhs);
         }
         else
         {
             for (size_t i = 0; i < N; ++i)
-                result.data[i] = static_cast<ResultType>(lhs) + static_cast<ResultType>(rhs.data[i]);
+                result._data[i] = static_cast<ResultType>(lhs) + static_cast<ResultType>(rhs._data[i]);
         }
         return result;
     }
@@ -249,7 +249,7 @@ public:
         Vec<ResultType, N> result;
         for (size_t i = 0; i < N; ++i)
         {
-            result.data[i] = static_cast<ResultType>(lhs.data[i]) - static_cast<ResultType>(rhs.data[i]);
+            result._data[i] = static_cast<ResultType>(lhs._data[i]) - static_cast<ResultType>(rhs._data[i]);
         }
         return result;
     }
@@ -268,12 +268,12 @@ public:
         if constexpr (std::same_as<LType, Vec<T, N>>)
         {
             for (size_t i = 0; i < N; ++i)
-                result.data[i] = static_cast<ResultType>(lhs.data[i]) - static_cast<ResultType>(rhs);
+                result._data[i] = static_cast<ResultType>(lhs._data[i]) - static_cast<ResultType>(rhs);
         }
         else
         {
             for (size_t i = 0; i < N; ++i)
-                result.data[i] = static_cast<ResultType>(lhs) - static_cast<ResultType>(rhs.data[i]);
+                result._data[i] = static_cast<ResultType>(lhs) - static_cast<ResultType>(rhs._data[i]);
         }
         return result;
     }
@@ -286,7 +286,7 @@ public:
         Vec<ResultType, N> result;
         for (size_t i = 0; i < N; ++i)
         {
-            result.data[i] = static_cast<ResultType>(lhs.data[i]) * static_cast<ResultType>(rhs.data[i]);
+            result._data[i] = static_cast<ResultType>(lhs._data[i]) * static_cast<ResultType>(rhs._data[i]);
         }
         return result;
     }
@@ -305,12 +305,12 @@ public:
         if constexpr (std::same_as<LType, Vec<T, N>>)
         {
             for (size_t i = 0; i < N; ++i)
-                result.data[i] = static_cast<ResultType>(lhs.data[i]) * static_cast<ResultType>(rhs);
+                result._data[i] = static_cast<ResultType>(lhs._data[i]) * static_cast<ResultType>(rhs);
         }
         else
         {
             for (size_t i = 0; i < N; ++i)
-                result.data[i] = static_cast<ResultType>(lhs) * static_cast<ResultType>(rhs.data[i]);
+                result._data[i] = static_cast<ResultType>(lhs) * static_cast<ResultType>(rhs._data[i]);
         }
         return result;
     }
@@ -323,7 +323,7 @@ public:
         Vec<ResultType, N> result;
         for (size_t i = 0; i < N; ++i)
         {
-            result.data[i] = static_cast<ResultType>(lhs.data[i]) / static_cast<ResultType>(rhs.data[i]);
+            result._data[i] = static_cast<ResultType>(lhs._data[i]) / static_cast<ResultType>(rhs._data[i]);
         }
         return result;
     }
@@ -342,12 +342,12 @@ public:
         if constexpr (std::same_as<LType, Vec<T, N>>)
         {
             for (size_t i = 0; i < N; ++i)
-                result.data[i] = static_cast<ResultType>(lhs.data[i]) / static_cast<ResultType>(rhs);
+                result._data[i] = static_cast<ResultType>(lhs._data[i]) / static_cast<ResultType>(rhs);
         }
         else
         {
             for (size_t i = 0; i < N; ++i)
-                result.data[i] = static_cast<ResultType>(lhs) / static_cast<ResultType>(rhs.data[i]);
+                result._data[i] = static_cast<ResultType>(lhs) / static_cast<ResultType>(rhs._data[i]);
         }
         return result;
     }
@@ -357,9 +357,9 @@ public:
         requires(N == 3)
     {
         return Vec(
-            data[1] * other.data[2] - data[2] * other.data[1],
-            data[2] * other.data[0] - data[0] * other.data[2],
-            data[0] * other.data[1] - data[1] * other.data[0]);
+            _data[1] * other._data[2] - _data[2] * other._data[1],
+            _data[2] * other._data[0] - _data[0] * other._data[2],
+            _data[0] * other._data[1] - _data[1] * other._data[0]);
     }
 
     // 取反
@@ -368,7 +368,7 @@ public:
         Vec result{};
         for (size_t i = 0; i < N; ++i)
         {
-            result[i] = -data[i];
+            result[i] = -_data[i];
         }
         return result;
     }
@@ -379,7 +379,7 @@ public:
         Vec result{};
         for (size_t i = 0; i < N; ++i)
         {
-            result[i] = data[i] / other.data[i];
+            result[i] = _data[i] / other._data[i];
         }
         return result;
     }
@@ -389,7 +389,7 @@ public:
     {
         for (size_t i = 0; i < N; ++i)
         {
-            data[i] += other.data[i];
+            _data[i] += other._data[i];
         }
         return *this;
     }
@@ -398,7 +398,7 @@ public:
     {
         for (size_t i = 0; i < N; ++i)
         {
-            data[i] += value;
+            _data[i] += value;
         }
         return *this;
     }
@@ -407,7 +407,7 @@ public:
     {
         for (size_t i = 0; i < N; ++i)
         {
-            data[i] -= other.data[i];
+            _data[i] -= other._data[i];
         }
         return *this;
     }
@@ -416,7 +416,7 @@ public:
     {
         for (size_t i = 0; i < N; ++i)
         {
-            data[i] -= value;
+            _data[i] -= value;
         }
         return *this;
     }
@@ -425,7 +425,7 @@ public:
     {
         for (size_t i = 0; i < N; ++i)
         {
-            data[i] *= other.data[i];
+            _data[i] *= other._data[i];
         }
         return *this;
     }
@@ -434,7 +434,7 @@ public:
     {
         for (size_t i = 0; i < N; ++i)
         {
-            data[i] *= value;
+            _data[i] *= value;
         }
         return *this;
     }
@@ -443,7 +443,7 @@ public:
     {
         for (size_t i = 0; i < N; ++i)
         {
-            data[i] /= other.data[i];
+            _data[i] /= other._data[i];
         }
         return *this;
     }
@@ -452,7 +452,7 @@ public:
     {
         for (size_t i = 0; i < N; ++i)
         {
-            data[i] /= value;
+            _data[i] /= value;
         }
         return *this;
     }
@@ -460,20 +460,20 @@ public:
     constexpr Vec &operator^=(const Vec &other)
         requires(N == 3)
     {
-        T x = data[1] * other.data[2] - data[2] * other.data[1];
-        T y = data[2] * other.data[0] - data[0] * other.data[2];
-        T z = data[0] * other.data[1] - data[1] * other.data[0];
-        data[0] = x;
-        data[1] = y;
-        data[2] = z;
+        T x = _data[1] * other._data[2] - _data[2] * other._data[1];
+        T y = _data[2] * other._data[0] - _data[0] * other._data[2];
+        T z = _data[0] * other._data[1] - _data[1] * other._data[0];
+        _data[0] = x;
+        _data[1] = y;
+        _data[2] = z;
         return *this;
     };
 
     // 迭代器支持
-    auto begin() noexcept { return data.begin(); }
-    auto end() noexcept { return data.end(); }
-    auto begin() const noexcept { return data.begin(); }
-    auto end() const noexcept { return data.end(); }
+    auto begin() noexcept { return _data.begin(); }
+    auto end() noexcept { return _data.end(); }
+    auto begin() const noexcept { return _data.begin(); }
+    auto end() const noexcept { return _data.end(); }
 
     // 比较操作符 (C++20)
     auto operator<=>(const Vec &other) const = default;

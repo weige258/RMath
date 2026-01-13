@@ -24,14 +24,14 @@ template <Detail::NumericMat T, size_t Row, size_t Col>
 struct Mat
 {
 
-protected:
-    std::array<T, Row * Col> data;
+private:
+    std::array<T, Row * Col> _data;
 
 public:
     // 构造
-    constexpr Mat() { data.fill(0); }
+    constexpr Mat() { _data.fill(0); }
 
-    constexpr Mat(T num) { data.fill(num); }
+    constexpr Mat(T num) { _data.fill(num); }
 
     constexpr Mat(const Mat &other) = default;
 
@@ -47,7 +47,7 @@ public:
         size_t i = 0;
         for (const auto &val : list)
         {
-            data[i++] = static_cast<T>(val);
+            _data[i++] = static_cast<T>(val);
         }
     }
 
@@ -60,7 +60,7 @@ public:
         {
             for (size_t c = 0; c < Col; ++c)
             {
-                data[r * Col + c] = row.row_values[c];
+                _data[r * Col + c] = row.row_values[c];
             }
             r++;
         }
@@ -70,7 +70,7 @@ public:
     constexpr Mat(const Args &...args)
         requires(sizeof...(args) == Row * Col && (std::convertible_to<Args, T> && ...))
     {
-        data = std::array<T, Row * Col>{static_cast<T>(args)...};
+        _data = std::array<T, Row * Col>{static_cast<T>(args)...};
     };
 
     template <typename U, size_t OtherRow, size_t OtherCol>
@@ -79,7 +79,7 @@ public:
         static_assert(OtherRow == Row && OtherCol == Col, "Matrix dimension mismatch: Row and Col must be equal for conversion.");
         for (size_t i = 0; i < Row * Col; ++i)
         {
-            data[i] = static_cast<T>(other[i]);
+            _data[i] = static_cast<T>(other[i]);
         }
     }
 
@@ -89,7 +89,7 @@ public:
         static_assert(OtherRow == Row && OtherCol == Col, "Matrix dimension mismatch: Row and Col must be equal for conversion.");
         for (size_t i = 0; i < Row * Col; ++i)
         {
-            data[i] = static_cast<T>(other[i]);
+            _data[i] = static_cast<T>(other[i]);
         }
     }
 
@@ -97,11 +97,11 @@ public:
     {
         for (size_t i = 0; i < Row * Col; ++i)
         {
-            data[i] = arr[i];
+            _data[i] = arr[i];
         }
     }
 
-    constexpr Mat(const std::array<T, Row * Col> &arr) : data(arr) {}
+    constexpr Mat(const std::array<T, Row * Col> &arr) : _data(arr) {}
 
     template <typename U>
     constexpr Mat(const std::list<U> &list)
@@ -112,7 +112,7 @@ public:
             throw std::runtime_error("Size mismatch");
         }
 
-        std::copy(list.begin(), list.end(), data.begin());
+        std::copy(list.begin(), list.end(), _data.begin());
     }
 
     template <typename U>
@@ -124,12 +124,12 @@ public:
             throw std::runtime_error("Size mismatch");
         }
 
-        std::copy(vec.begin(), vec.end(), data.begin());
+        std::copy(vec.begin(), vec.end(), _data.begin());
     }
 
     constexpr Mat(const std::span<T, Row * Col> &span)
     {
-        std::copy(span.begin(), span.end(), data.begin());
+        std::copy(span.begin(), span.end(), _data.begin());
     }
 
     // 析构
@@ -141,7 +141,7 @@ public:
     {
         for (size_t i = 0; i < Row * Col; ++i)
         {
-            data[i] = static_cast<T>(other[i]);
+            _data[i] = static_cast<T>(other[i]);
         }
     }
 
@@ -149,59 +149,55 @@ public:
     constexpr operator std::array<U, Row *Col>() const
         requires std::convertible_to<T, U>
     {
-        return std::array<U, Row * Col>(data.begin(), data.end());
+        return std::array<U, Row * Col>(_data.begin(), _data.end());
     }
 
     template <typename U>
     constexpr operator std::list<U>() const
         requires std::convertible_to<T, U>
     {
-        return std::list<U>(data.begin(), data.end());
+        return std::list<U>(_data.begin(), _data.end());
     }
 
     template <typename U>
     constexpr operator std::vector<U>() const
         requires std::convertible_to<T, U>
     {
-        return std::vector<U>(data.begin(), data.end());
+        return std::vector<U>(_data.begin(), _data.end());
     }
 
     template <typename U>
     constexpr operator std::span<U, Row *Col>() const
         requires std::convertible_to<T, U>
     {
-        return std::span<U, Row * Col>(data.begin(), data.end());
+        return std::span<U, Row * Col>(_data.begin(), _data.end());
     }
 
     // 指针转换
-    explicit operator T *() { return data.data(); }
-    explicit operator const T *() const { return data.data(); }
+    explicit operator T *() { return _data._data(); }
+    explicit operator const T *() const { return _data._data(); }
 
     // 访问
     constexpr T &operator[](size_t index)
     {
-        return data[index];
+        return _data[index];
     }
 
     constexpr const T &operator[](size_t index) const
     {
-        return data[index];
+        return _data[index];
     }
 
     constexpr T &operator[](size_t row, size_t col)
     {
-        return data[row * Col + col];
+        return _data[row * Col + col];
     }
 
     constexpr const T &operator[](size_t row, size_t col) const
     {
-        return data[row * Col + col];
+        return _data[row * Col + col];
     }
     
-    const auto& operator[](Range<Row> rr,Range<Col> rc) const
-    {
-        
-    }
 
 };
 
