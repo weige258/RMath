@@ -197,8 +197,49 @@ public:
     {
         return _data[row * Col + col];
     }
-    
 
+    template <int RStart, int REnd, int RStep,
+              int CStart, int CEnd, int CStep>
+    constexpr auto operator[](StaticRange<RStart, REnd, RStep> rr,
+                              StaticRange<CStart, CEnd, CStep> rc) const
+    {
+        constexpr size_t OutRow = static_cast<size_t>(decltype(rr)::size);
+        constexpr size_t OutCol = static_cast<size_t>(decltype(rc)::size);
+        Mat<T, OutRow, OutCol> result;
+
+        if constexpr (OutRow > 0)
+        {
+            constexpr int last_r = RStart + (static_cast<int>(OutRow) - 1) * RStep;
+            static_assert(RStart >= 0 && RStart < (int)Row, "StaticRange Row Start out of bounds.");
+            static_assert(last_r >= 0 && last_r < (int)Row, "StaticRange Row sequence exceeds Matrix dimensions.");
+        }
+
+        if constexpr (OutCol > 0)
+        {
+            constexpr int last_c = CStart + (static_cast<int>(OutCol) - 1) * CStep;
+            static_assert(CStart >= 0 && CStart < (int)Col, "StaticRange Col Start out of bounds.");
+            static_assert(last_c >= 0 && last_c < (int)Col, "StaticRange Col sequence exceeds Matrix dimensions.");
+        }
+
+        size_t out_r = 0;
+        for (auto r_idx : rr)
+        {
+            size_t out_c = 0;
+            for (auto c_idx : rc)
+            {
+                result[out_r, out_c] = (*this)[r_idx, c_idx];
+                out_c++;
+            }
+            out_r++;
+        }
+
+        return result;
+    }
+
+    //赋值
+    constexpr Mat& operator=(const Mat& other) = default;
+    
+    constexpr Mat& operator=(Mat&& other) = default;
 };
 
 // 输出运算符
@@ -223,6 +264,6 @@ std::ostream &operator<<(std::ostream &os, const Mat<T, Row, Col> &mat)
             os << ",\n";
         }
     }
-    os << "]";
+    os << "] \n";
     return os;
 }

@@ -5,6 +5,7 @@
 #include <concepts>
 #include <iostream>
 #include <cmath>
+#include "range.hpp"
 
 namespace Detail
 {
@@ -118,7 +119,7 @@ public:
     operator std::array<U, N>() const
     {
         std::array<U, N> result;
-        for (int i=0;i<N;++i)
+        for (int i = 0; i < N; ++i)
         {
             result[i] = static_cast<U>(_data[i]);
         }
@@ -175,6 +176,26 @@ public:
         return _data[index.value];
     }
 
+    template <int start, int end, int step>
+    constexpr auto operator[](StaticRange<start, end, step> range) const
+    {
+        constexpr size_t outDim = decltype(range)::size;
+
+        if constexpr (outDim > 0)
+        {
+            constexpr int lastIdx = start + (static_cast<int>(outDim) - 1) * step;
+            static_assert(start >= 0 && start < (int)N, "Vec slice start out of bounds!");
+            static_assert(lastIdx >= 0 && lastIdx < (int)N, "Vec slice end out of bounds!");
+        }
+        Vec<T, outDim> result;
+        int i = 0;
+        for (auto idx : range)
+        {
+            result[i++] = _data[idx];
+        }
+        return result;
+    }
+
     constexpr T &x()
         requires(0 < N)
     {
@@ -200,9 +221,9 @@ public:
     }
 
     // 赋值
-    Vec &operator=(const Vec &other) = default;
+    constexpr Vec &operator=(const Vec &other) = default;
 
-    Vec &operator=(Vec &&other) = default;
+    constexpr Vec &operator=(Vec &&other) = default;
 
     // 加法
     template <Detail::NumericVec U>
@@ -485,7 +506,7 @@ public:
 
     static const std::type_info &type() noexcept { return typeid(Vec<T, N>); }
 
-    static const  std::type_info &value_type() noexcept { return typeid(T); }
+    static const std::type_info &value_type() noexcept { return typeid(T); }
 };
 
 // 模长
@@ -589,7 +610,7 @@ auto Reflect(const Vec<T, N> &a, const Vec<U, N> &n)
 
 // 输出运算符
 template <Detail::NumericVec T, std::size_t N>
- std::ostream &operator<<(std::ostream &os, const Vec<T, N> &vec)
+std::ostream &operator<<(std::ostream &os, const Vec<T, N> &vec)
 {
     os << "(";
     for (size_t i = 0; i < N; ++i)

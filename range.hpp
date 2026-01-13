@@ -11,6 +11,7 @@ namespace Detail {
     concept NumericRange = std::is_arithmetic_v<T>; 
 }
 
+// 范围类
 template <Detail::NumericRange T>
 struct Range {
 private:
@@ -45,8 +46,9 @@ public:
     template<Detail::NumericRange U,size_t N>
     operator std::array<U,N>() const {
         std::array<U, N> arr;
-        for (auto i : *this) {
-            arr.push_back(static_cast<U>(i));
+        size_t index = 0;
+        for (auto value : *this) {
+            arr[index++] = static_cast<U>(value);
         }
         return arr;
     }
@@ -87,6 +89,38 @@ public:
     static const std::type_info &type() noexcept { return typeid(Range<T>); }
 
     static const  std::type_info &value_type() noexcept { return typeid(T); }
+};
+
+// 静态范围类
+template <int Start, int End, int Step = 1>
+struct StaticRange {
+    static_assert(Step != 0, "Step cannot be zero");
+
+    // 编译期计算元素个数
+    static constexpr int size = []() {
+        if constexpr (Step > 0) {
+            return (End > Start) ? (End - Start + Step - 1) / Step : 0;
+        } else {
+            return (End < Start) ? (Start - End - Step - 1) / (-Step) : 0;
+        }
+    }();
+
+    struct Iterator {
+        int current;
+        constexpr int operator*() const { return current; }
+        constexpr Iterator& operator++() { 
+            current += Step; 
+            return *this; 
+        }
+        
+        constexpr bool operator!=(const Iterator& other) const { 
+            if constexpr (Step > 0) return current < other.current;
+            else return current > other.current;
+        }
+    };
+
+    constexpr Iterator begin() const { return Iterator{Start}; }
+    constexpr Iterator end() const { return Iterator{End}; }
 };
 
 template<typename T> Range(T, T) -> Range<T>;
