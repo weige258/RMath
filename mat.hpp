@@ -132,6 +132,13 @@ public:
         std::copy(span.begin(), span.end(), _data.begin());
     }
 
+    static constexpr Mat<T, Row, Col> MakeIdentity() {
+        static_assert(Row == Col, "Identity matrix must be square.");
+        Mat<T, Row, Col> res;
+        for(size_t i = 0; i < Row; ++i) res[i, i] = 1;
+        return res;
+    }
+
     // 析构
     ~Mat() = default;
 
@@ -236,10 +243,36 @@ public:
         return result;
     }
 
-    //赋值
-    constexpr Mat& operator=(const Mat& other) = default;
-    
-    constexpr Mat& operator=(Mat&& other) = default;
+    constexpr Mat<T, 1, Col> GetRow(size_t row) const
+    {
+        Mat<T, 1, Col> result;
+
+        size_t j = 0;
+        for (size_t i = row * Col; i < row * Col + Col; ++i)
+        {
+            result[j] = (_data[i]);
+            j++;
+        }
+
+        return result;
+    }
+
+    constexpr Mat<T, Row, 1> GetCol(size_t col) const
+    {
+        Mat<T, Row, 1> result;
+
+        for (size_t i = 0; i < Row; ++i)
+        {
+            result[i] = (_data[i * Col + col]);
+        }
+
+        return result;
+    }
+
+    // 赋值
+    constexpr Mat &operator=(const Mat &other) = default;
+
+    constexpr Mat &operator=(Mat &&other) = default;
 };
 
 // 输出运算符
