@@ -7,8 +7,8 @@
 using namespace std;
 
 int main() {
-    Mat<int, 3, 3> mat = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
-    mat[1,2]=2;
-      
+    Mat<float,4,4> mat1=2;
+    Mat<float,4,4> mat2=Mat<float,4,4>::MakeIdentity();
+    cout << Hadamard(mat1,mat1,mat2) << endl;
     return 0;
 }

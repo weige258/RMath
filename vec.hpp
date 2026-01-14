@@ -1,3 +1,7 @@
+#ifndef VEC_HPP
+#define VEC_HPP
+
+
 #include <array>
 #include <list>
 #include <vector>
@@ -35,7 +39,7 @@ private:
     std::array<T, N> _data;
 
 public:
-    using value_type_alias = T;
+    using vec_type_alias = T;
     template <Detail::NumericVec U, std::size_t M>
     friend struct Vec;
 
@@ -225,7 +229,16 @@ public:
 
     constexpr Vec &operator=(Vec &&other) = default;
 
-    // 加法
+    constexpr Vec &operator=(const T &value)
+    {
+        for (size_t i = 0; i < N; ++i)
+        {
+            _data[i] = value;
+        }
+        return *this;
+    }
+
+    // 运算
     template <Detail::NumericVec U>
     constexpr friend auto operator+(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
     {
@@ -262,7 +275,6 @@ public:
         return result;
     }
 
-    // 减法
     template <Detail::NumericVec U>
     constexpr friend auto operator-(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
     {
@@ -299,7 +311,6 @@ public:
         return result;
     }
 
-    // 乘法
     template <Detail::NumericVec U>
     constexpr friend auto operator*(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
     {
@@ -336,7 +347,6 @@ public:
         return result;
     }
 
-    // 除法
     template <Detail::NumericVec U>
     constexpr friend auto operator/(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
     {
@@ -373,7 +383,6 @@ public:
         return result;
     }
 
-    // 叉乘
     constexpr Vec operator^(const Vec &other) const
         requires(N == 3)
     {
@@ -383,7 +392,6 @@ public:
             _data[0] * other._data[1] - _data[1] * other._data[0]);
     }
 
-    // 取反
     constexpr Vec operator-()
     {
         Vec result{};
@@ -394,7 +402,6 @@ public:
         return result;
     }
 
-    // 逐元素除法
     constexpr Vec operator/(const Vec &other) const
     {
         Vec result{};
@@ -540,7 +547,7 @@ auto Dot(const Vecs &...vecs)
 {
     constexpr std::size_t N = (std::tuple_element_t<0, std::tuple<Vecs...>>::size());
     static_assert(((vecs.size() == N) && ...), "All vectors must have the same dimension N");
-    using ResultType = std::common_type_t<typename Vecs::value_type_alias...>;
+    using ResultType = std::common_type_t<typename Vecs::vec_type_alias...>;
     ResultType total_sum = 0;
     for (std::size_t i = 0; i < N; ++i)
     {
@@ -550,13 +557,36 @@ auto Dot(const Vecs &...vecs)
     return total_sum;
 }
 
+// 向量 Hadamard 积 (按元素相乘)
+template <typename... Args>
+    requires(sizeof...(Args) >= 2)  &&
+    (... && requires { typename std::remove_cvref_t<Args>::vec_type_alias; })
+constexpr auto Hadamard(const Args&... args) {
+
+    using FirstArg = std::tuple_element_t<0, std::tuple<Args...>>;
+    constexpr size_t N = std::remove_cvref_t<FirstArg>::size();
+
+    static_assert((... && (Args::size() == N)), 
+                  "All vectors must have the same dimension for Hadamard product.");
+
+    using ResultScalar = std::common_type_t<typename std::remove_cvref_t<Args>::vec_type_alias...>;
+
+    Vec<ResultScalar, N> result;
+
+    for (size_t i = 0; i < N; ++i) {
+        result[i] = (static_cast<ResultScalar>(args[i]) * ...);
+    }
+
+    return result;
+}
+
 // 拼接
 template <typename... Vecs>
-    requires(sizeof...(Vecs) >= 1) // 至少需要一个向量
+    requires(sizeof...(Vecs) >= 1) 
 auto Cat(const Vecs &...vecs)
 {
     constexpr std::size_t TotalN = (Vecs::size() + ...);
-    using ResultT = std::common_type_t<typename Vecs::value_type_alias...>;
+    using ResultT = std::common_type_t<typename Vecs::vec_type_alias...>;
     Vec<ResultT, TotalN> result;
     std::size_t offset = 0;
     ([&](const auto &v)
@@ -646,3 +676,5 @@ using Vec4i = Vec<int, 4>;
 using Vec4f = Vec<float, 4>;
 using Vec4d = Vec<double, 4>;
 using Vec4l = Vec<long, 4>;
+
+#endif // VEC_HPP
