@@ -1,7 +1,3 @@
-#ifndef VEC_HPP
-#define VEC_HPP
-
-
 #include <array>
 #include <list>
 #include <vector>
@@ -10,6 +6,9 @@
 #include <iostream>
 #include <cmath>
 #include "range.hpp"
+
+#ifndef VEC_HPP
+#define VEC_HPP
 
 namespace Detail
 {
@@ -383,6 +382,16 @@ public:
         return result;
     }
 
+    constexpr Vec operator/(const Vec &other) const
+    {
+        Vec result{};
+        for (size_t i = 0; i < N; ++i)
+        {
+            result[i] = _data[i] / other._data[i];
+        }
+        return result;
+    }
+
     constexpr Vec operator^(const Vec &other) const
         requires(N == 3)
     {
@@ -398,16 +407,6 @@ public:
         for (size_t i = 0; i < N; ++i)
         {
             result[i] = -_data[i];
-        }
-        return result;
-    }
-
-    constexpr Vec operator/(const Vec &other) const
-    {
-        Vec result{};
-        for (size_t i = 0; i < N; ++i)
-        {
-            result[i] = _data[i] / other._data[i];
         }
         return result;
     }
@@ -559,21 +558,23 @@ auto Dot(const Vecs &...vecs)
 
 // 向量 Hadamard 积 (按元素相乘)
 template <typename... Args>
-    requires(sizeof...(Args) >= 2)  &&
-    (... && requires { typename std::remove_cvref_t<Args>::vec_type_alias; })
-constexpr auto Hadamard(const Args&... args) {
+    requires(sizeof...(Args) >= 2) &&
+            (... && requires { typename std::remove_cvref_t<Args>::vec_type_alias; })
+constexpr auto Hadamard(const Args &...args)
+{
 
     using FirstArg = std::tuple_element_t<0, std::tuple<Args...>>;
     constexpr size_t N = std::remove_cvref_t<FirstArg>::size();
 
-    static_assert((... && (Args::size() == N)), 
+    static_assert((... && (Args::size() == N)),
                   "All vectors must have the same dimension for Hadamard product.");
 
     using ResultScalar = std::common_type_t<typename std::remove_cvref_t<Args>::vec_type_alias...>;
 
     Vec<ResultScalar, N> result;
 
-    for (size_t i = 0; i < N; ++i) {
+    for (size_t i = 0; i < N; ++i)
+    {
         result[i] = (static_cast<ResultScalar>(args[i]) * ...);
     }
 
@@ -582,7 +583,7 @@ constexpr auto Hadamard(const Args&... args) {
 
 // 拼接
 template <typename... Vecs>
-    requires(sizeof...(Vecs) >= 1) 
+    requires(sizeof...(Vecs) >= 1)
 auto Cat(const Vecs &...vecs)
 {
     constexpr std::size_t TotalN = (Vecs::size() + ...);
