@@ -31,7 +31,7 @@ namespace Detail
 
 // Vec 对象
 template <Detail::NumericVec T, std::size_t N>
-struct Vec
+struct Vec final
 {
 private:
     // 数据

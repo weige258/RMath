@@ -13,7 +13,7 @@ namespace Detail {
 
 // 范围类
 template <Detail::NumericRange T>
-struct Range {
+struct Range final {
 private:
 //数据
     T _start, _end, _step; 
@@ -93,7 +93,7 @@ public:
 
 // 静态范围类
 template <int Start, int End, int Step = 1>
-struct StaticRange {
+struct StaticRange final {
     static_assert(Step != 0, "Step cannot be zero");
 
     // 编译期计算元素个数

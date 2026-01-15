@@ -9,7 +9,7 @@
 #ifndef MAT_HPP
 #define MAT_HPP
 
-namespace Detail
+namespace Detail 
 {
     template <typename T>
     concept NumericMat = std::is_arithmetic_v<T>;
@@ -43,7 +43,7 @@ namespace Detail
 };
 
 template <Detail::NumericMat T, size_t Row, size_t Col>
-struct Mat
+struct Mat final
 {
 
 private:
@@ -551,23 +551,6 @@ public:
         return *this;
     }
 
-    template <Detail::NumericMat U, size_t N>
-    constexpr friend auto &operator*=(Vec<U, N> &lhs, const Mat<T, N, N> &rhs)
-    {
-        Vec<T, N> temp;
-        for (size_t c = 0; c < N; ++c)
-        {
-            T sum = 0;
-            for (size_t r = 0; r < N; ++r)
-            {
-                sum += (lhs)[r] * static_cast<T>(rhs[r, c]);
-            }
-            temp[c] = sum;
-        }
-        lhs = temp;
-        return lhs;
-    }
-
     // 迭代器支持
     auto begin() noexcept { return _data.begin(); }
     auto end() noexcept { return _data.end(); }
@@ -590,6 +573,24 @@ public:
 
     static const std::type_info &value_type() noexcept { return typeid(T); }
 };
+
+// 向量与矩阵乘法
+template <Detail::NumericMat T,Detail::NumericMat U, size_t N>
+    constexpr auto &operator*=(Vec<U, N> &lhs, const Mat<T, N, N> &rhs)
+    {
+        Vec<T, N> temp;
+        for (size_t c = 0; c < N; ++c)
+        {
+            T sum = 0;
+            for (size_t r = 0; r < N; ++r)
+            {
+                sum += (lhs)[r] * static_cast<T>(rhs[r, c]);
+            }
+            temp[c] = sum;
+        }
+        lhs = temp;
+        return lhs;
+    }
 
 // 矩阵 Hadamard 积
 template <typename... Args>
@@ -759,6 +760,7 @@ template <Detail::NumericMat T, size_t Size>
 constexpr auto Inverse(const Mat<T, Size, Size> &mat)
 {
     auto det = Det(mat);
+    
     if (std::abs(det) < 1e-9)
     {
         throw std::runtime_error("Matrix is singular and cannot be inverted.");
@@ -853,5 +855,19 @@ std::ostream &operator<<(std::ostream &os, const Mat<T, Row, Col> &mat)
     os << "] \n";
     return os;
 }
+
+//常用矩阵类型
+using Mat2i = Mat<int, 2, 2>;
+using Mat2f = Mat<float, 2, 2>;
+using Mat2d = Mat<double, 2, 2>;
+using Mat2l = Mat<long, 2, 2>;
+using Mat3i = Mat<int, 3, 3>;
+using Mat3f = Mat<float, 3, 3>;
+using Mat3d = Mat<double, 3, 3>;
+using Mat3l = Mat<long, 3, 3>;
+using Mat4i = Mat<int, 4, 4>;
+using Mat4f = Mat<float, 4, 4>;
+using Mat4d = Mat<double, 4, 4>;
+using Mat4l = Mat<long, 4, 4>;
 
 #endif // MAT_HPP
