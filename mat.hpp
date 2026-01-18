@@ -9,7 +9,7 @@
 #ifndef MAT_HPP
 #define MAT_HPP
 
-namespace Detail 
+namespace Detail
 {
     template <typename T>
     concept NumericMat = std::is_arithmetic_v<T>;
@@ -560,6 +560,95 @@ public:
     // 比较操作符 (C++20)
     auto operator<=>(const Mat &other) const = default;
 
+    // 相机方法
+    // 3D相机方法
+    constexpr void SetViewMatrix(const Vec<T, 3> &camera_pos, const Vec<T, 3> &camera_direction, const Vec<T, 3> &camera_up)
+        requires(Row == 4 && Col == 4)
+    {
+        Mat<T, 4, 4> rotation_matrix = Mat<T, 4, 4>::MakeIdentity();
+        Mat<T, 4, 4> translation_matrix = Mat<T, 4, 4>::MakeIdentity();
+
+        Vec<T, 3> front = Normalize(camera_direction);
+        Vec<T, 3> right = Normalize(camera_direction ^ camera_up);
+        Vec<T, 3> up = Normalize(right ^ camera_direction);
+
+        rotation_matrix[0, 0] = right[0];
+        rotation_matrix[0, 1] = right[1];
+        rotation_matrix[0, 2] = right[2];
+        rotation_matrix[1, 0] = up[0];
+        rotation_matrix[1, 1] = up[1];
+        rotation_matrix[1, 2] = up[2];
+        rotation_matrix[2, 0] = front[0];
+        rotation_matrix[2, 1] = front[1];
+        rotation_matrix[2, 2] = front[2];
+
+        translation_matrix[3, 0] = -camera_pos[0];
+        translation_matrix[3, 1] = -camera_pos[1];
+        translation_matrix[3, 2] = -camera_pos[2];
+
+        *this = rotation_matrix * translation_matrix;
+    }
+
+    constexpr void SetPerspectiveMartrix(T fov_radians, T aspect, T near, T far)
+        requires(Row == 4 && Col == 4)
+    {
+        this->_data.fill(0);
+
+        T tanHalfFov = std::tan(fov_radians / static_cast<T>(2));
+
+        (*this)[0, 0] = static_cast<T>(1) / (aspect * tanHalfFov);
+        (*this)[1, 1] = static_cast<T>(1) / tanHalfFov;
+        (*this)[2, 2] = -(far + near) / (far - near);
+        (*this)[2, 3] = -(static_cast<T>(2) * far * near) / (far - near);
+        (*this)[3, 2] = static_cast<T>(-1);
+    }
+
+    constexpr void SetOrthoMartrix(T left, T right, T bottom, T top, T near, T far)
+        requires(Row == 4 && Col == 4)
+    {
+        this->_data.fill(0);
+
+        (*this)[0, 0] = static_cast<T>(2) / (right - left);
+        (*this)[1, 1] = static_cast<T>(2) / (top - bottom);
+        (*this)[2, 2] = -static_cast<T>(2) / (far - near);
+
+        (*this)[0, 3] = -(right + left) / (right - left);
+        (*this)[1, 3] = -(top + bottom) / (top - bottom);
+        (*this)[2, 3] = -(far + near) / (far - near);
+        (*this)[3, 3] = static_cast<T>(1);
+    }
+
+    // 2D相机方法
+    constexpr void SetViewMatrix(const Vec<T, 2> &pos, T rotation_radians, T zoom)
+        requires(Row == 4 && Col == 4)
+    {
+        this->_data.fill(0);
+
+        T cos_r = std::cos(rotation_radians);
+        T sin_r = std::sin(rotation_radians);
+
+        (*this)[0, 0] = cos_r * zoom;
+        (*this)[0, 1] = sin_r * zoom;
+        (*this)[0, 3] = -(pos[0] * cos_r + pos[1] * sin_r) * zoom;
+
+        (*this)[1, 0] = -sin_r * zoom;
+        (*this)[1, 1] = cos_r * zoom;
+        (*this)[1, 3] = (pos[0] * sin_r - pos[1] * cos_r) * zoom;
+
+        (*this)[2, 2] = 1;
+
+        (*this)[3, 3] = 1;
+    }
+
+    constexpr void SetOrthoMatix(T width, T height)
+        requires(Row == 4 && Col == 4)
+    {
+        T half_w = width / static_cast<T>(2);
+        T half_h = height / static_cast<T>(2);
+
+        SetOrthoMartrix(-half_w, half_w, half_h, -half_h, static_cast<T>(-1), static_cast<T>(1));
+    }
+
     // 查询方法
     static constexpr size_t size() { return Row * Col; };
 
@@ -575,22 +664,22 @@ public:
 };
 
 // 向量与矩阵乘法
-template <Detail::NumericMat T,Detail::NumericMat U, size_t N>
-    constexpr auto &operator*=(Vec<U, N> &lhs, const Mat<T, N, N> &rhs)
+template <Detail::NumericMat T, Detail::NumericMat U, size_t N>
+constexpr auto &operator*=(Vec<U, N> &lhs, const Mat<T, N, N> &rhs)
+{
+    Vec<T, N> temp;
+    for (size_t c = 0; c < N; ++c)
     {
-        Vec<T, N> temp;
-        for (size_t c = 0; c < N; ++c)
+        T sum = 0;
+        for (size_t r = 0; r < N; ++r)
         {
-            T sum = 0;
-            for (size_t r = 0; r < N; ++r)
-            {
-                sum += (lhs)[r] * static_cast<T>(rhs[r, c]);
-            }
-            temp[c] = sum;
+            sum += (lhs)[r] * static_cast<T>(rhs[r, c]);
         }
-        lhs = temp;
-        return lhs;
+        temp[c] = sum;
     }
+    lhs = temp;
+    return lhs;
+}
 
 // 矩阵 Hadamard 积
 template <typename... Args>
@@ -707,25 +796,46 @@ template <Detail::NumericMat T, size_t Size>
 constexpr auto Det(const Mat<T, Size, Size> &mat)
 {
     if constexpr (Size == 1)
-    {
         return mat[0];
-    }
-    else if constexpr (Size == 2)
-    {
+    if constexpr (Size == 2)
         return mat[0, 0] * mat[1, 1] - mat[0, 1] * mat[1, 0];
-    }
-    else
+
+    auto temp = mat;
+    T det = 1;
+
+    for (size_t i = 0; i < Size; ++i)
     {
-        auto det = static_cast<T>(0);
-        int sign = 1;
-        // 沿第一行展开
-        for (size_t j = 0; j < Size; ++j)
+        // 寻找主元
+        size_t pivot = i;
+        for (size_t j = i + 1; j < Size; ++j)
         {
-            det += sign * mat[0, j] * Det(MinorMatrix(mat, 0, j));
-            sign = -sign;
+            if (std::abs(temp[j, i]) > std::abs(temp[pivot, i]))
+                pivot = j;
         }
-        return det;
+
+        if (std::abs(temp[pivot, i]) < 1e-9)
+            return static_cast<T>(0);
+
+        if (pivot != i)
+        {
+            // 交换行，行列式变号
+            for (size_t k = i; k < Size; ++k)
+                std::swap(temp[i, k], temp[pivot, k]);
+            det *= -1;
+        }
+
+        det *= temp[i, i];
+
+        for (size_t j = i + 1; j < Size; ++j)
+        {
+            T factor = temp[j, i] / temp[i, i];
+            for (size_t k = i + 1; k < Size; ++k)
+            {
+                temp[j, k] -= factor * temp[i, k];
+            }
+        }
     }
+    return det;
 }
 
 // --- 代数余子式 (Cofactor) ---
@@ -760,7 +870,7 @@ template <Detail::NumericMat T, size_t Size>
 constexpr auto Inverse(const Mat<T, Size, Size> &mat)
 {
     auto det = Det(mat);
-    
+
     if (std::abs(det) < 1e-9)
     {
         throw std::runtime_error("Matrix is singular and cannot be inverted.");
@@ -834,29 +944,25 @@ constexpr bool IsFullRank(const Mat<T, Size, Size> &mat)
 template <Detail::NumericMat T, size_t Row, size_t Col>
 std::ostream &operator<<(std::ostream &os, const Mat<T, Row, Col> &mat)
 {
-    os << "[";
+
     for (size_t r = 0; r < Row; ++r)
     {
-        if (r > 0)
-            os << " ";
+        os << "[";
         for (size_t c = 0; c < Col; ++c)
         {
-            os << mat[r * Col + c];
-            if (c < Col - 1)
-            {
-                os << ", ";
-            }
+            if (mat[r,c]>=0){os << " ";}
+            os << mat[r, c];
+            if (c + 1 < Col){os << ", ";}
         }
-        if (r < Row - 1)
-        {
-            os << ",\n";
-        }
+        os << "]";
+        if (r + 1 < Row)
+            os << "\n";
     }
-    os << "] \n";
+
     return os;
 }
 
-//常用矩阵类型
+// 常用矩阵类型
 using Mat2i = Mat<int, 2, 2>;
 using Mat2f = Mat<float, 2, 2>;
 using Mat2d = Mat<double, 2, 2>;

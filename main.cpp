@@ -7,12 +7,13 @@
 using namespace std;
 
 int main() {
-    Vec3f v1(1.0f, 2.0f, 3.0f);
-    Vec3f v2(4.0f, 5.0f, 6.0f);
-    Vec3f v3 = v1 + v2;
-    Mat<float,3,3> m(1,2,2,4,5,6.2,7,8,1);
-    cout << v3 * Inverse(m) * m << endl;
+
     
-    
+   Mat<float,4,4> view_matrix = Mat<float,4,4>::MakeIdentity();
+   view_matrix.SetViewMatrix(Vec<float,3>(1,2,2),Vec<float,3>(0,0,1),Vec<float,3>(0,1,1));
+   Mat4f projection_matrix = Mat4f::MakeIdentity();
+   projection_matrix.SetPerspectiveMartrix(90.0f, 1.0f, 0.1f, 100.0f);
+   cout << Vec4f(1,2,3,1)*view_matrix*Inverse(view_matrix)<< endl; 
+   cout << Vec4f(1,2,3,1)*view_matrix*projection_matrix<< endl; 
     return 0;
 }
