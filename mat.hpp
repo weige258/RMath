@@ -561,7 +561,6 @@ public:
     auto operator<=>(const Mat &other) const = default;
 
     // 相机方法
-    // 3D相机方法
     constexpr void SetViewMatrix(const Vec<T, 3> &camera_pos, const Vec<T, 3> &camera_direction, const Vec<T, 3> &camera_up)
         requires(Row == 4 && Col == 4)
     {
@@ -587,6 +586,27 @@ public:
         translation_matrix[3, 2] = -camera_pos[2];
 
         *this = rotation_matrix * translation_matrix;
+    }
+
+        constexpr void SetViewMatrix(const Vec<T, 2> &pos, T rotation_radians, T zoom)
+        requires(Row == 4 && Col == 4)
+    {
+        this->_data.fill(0);
+
+        T cos_r = std::cos(rotation_radians);
+        T sin_r = std::sin(rotation_radians);
+
+        (*this)[0, 0] = cos_r * zoom;
+        (*this)[0, 1] = sin_r * zoom;
+        (*this)[0, 3] = -(pos[0] * cos_r + pos[1] * sin_r) * zoom;
+
+        (*this)[1, 0] = -sin_r * zoom;
+        (*this)[1, 1] = cos_r * zoom;
+        (*this)[1, 3] = (pos[0] * sin_r - pos[1] * cos_r) * zoom;
+
+        (*this)[2, 2] = 1;
+
+        (*this)[3, 3] = 1;
     }
 
     constexpr void SetPerspectiveMartrix(T fov_radians, T aspect, T near, T far)
@@ -616,28 +636,6 @@ public:
         (*this)[1, 3] = -(top + bottom) / (top - bottom);
         (*this)[2, 3] = -(far + near) / (far - near);
         (*this)[3, 3] = static_cast<T>(1);
-    }
-
-    // 2D相机方法
-    constexpr void SetViewMatrix(const Vec<T, 2> &pos, T rotation_radians, T zoom)
-        requires(Row == 4 && Col == 4)
-    {
-        this->_data.fill(0);
-
-        T cos_r = std::cos(rotation_radians);
-        T sin_r = std::sin(rotation_radians);
-
-        (*this)[0, 0] = cos_r * zoom;
-        (*this)[0, 1] = sin_r * zoom;
-        (*this)[0, 3] = -(pos[0] * cos_r + pos[1] * sin_r) * zoom;
-
-        (*this)[1, 0] = -sin_r * zoom;
-        (*this)[1, 1] = cos_r * zoom;
-        (*this)[1, 3] = (pos[0] * sin_r - pos[1] * cos_r) * zoom;
-
-        (*this)[2, 2] = 1;
-
-        (*this)[3, 3] = 1;
     }
 
     constexpr void SetOrthoMatix(T width, T height)
