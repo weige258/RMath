@@ -609,7 +609,7 @@ public:
         (*this)[3, 3] = 1;
     }
 
-    constexpr void SetPerspectiveMartrix(T fov_radians, T aspect, T near, T far)
+    constexpr void SetProjectionMatrix(T fov_radians, T aspect, T near, T far)
         requires(Row == 4 && Col == 4)
     {
         this->_data.fill(0);
@@ -623,7 +623,7 @@ public:
         (*this)[3, 2] = static_cast<T>(-1);
     }
 
-    constexpr void SetOrthoMartrix(T left, T right, T bottom, T top, T near, T far)
+    constexpr void SetProjectionMatrix(T left, T right, T bottom, T top, T near, T far)
         requires(Row == 4 && Col == 4)
     {
         this->_data.fill(0);
@@ -638,7 +638,7 @@ public:
         (*this)[3, 3] = static_cast<T>(1);
     }
 
-    constexpr void SetOrthoMatix(T width, T height)
+    constexpr void SetProjectionMatrix(T width, T height)
         requires(Row == 4 && Col == 4)
     {
         T half_w = width / static_cast<T>(2);
