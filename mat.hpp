@@ -231,8 +231,8 @@ public:
 
     template <int RStart, int REnd, int RStep,
               int CStart, int CEnd, int CStep>
-    constexpr auto operator[](StaticRange<RStart, REnd, RStep> rr,
-                              StaticRange<CStart, CEnd, CStep> rc) const
+    constexpr auto operator[](Range<RStart, REnd, RStep> rr,
+                              Range<CStart, CEnd, CStep> rc) const
     {
         constexpr size_t OutRow = static_cast<size_t>(decltype(rr)::size);
         constexpr size_t OutCol = static_cast<size_t>(decltype(rc)::size);
@@ -241,15 +241,15 @@ public:
         if constexpr (OutRow > 0)
         {
             constexpr int last_r = RStart + (static_cast<int>(OutRow) - 1) * RStep;
-            static_assert(RStart >= 0 && RStart < (int)Row, "StaticRange Row Start out of bounds.");
-            static_assert(last_r >= 0 && last_r < (int)Row, "StaticRange Row sequence exceeds Matrix dimensions.");
+            static_assert(RStart >= 0 && RStart < (int)Row, "Range Row Start out of bounds.");
+            static_assert(last_r >= 0 && last_r < (int)Row, "Range Row sequence exceeds Matrix dimensions.");
         }
 
         if constexpr (OutCol > 0)
         {
             constexpr int last_c = CStart + (static_cast<int>(OutCol) - 1) * CStep;
-            static_assert(CStart >= 0 && CStart < (int)Col, "StaticRange Col Start out of bounds.");
-            static_assert(last_c >= 0 && last_c < (int)Col, "StaticRange Col sequence exceeds Matrix dimensions.");
+            static_assert(CStart >= 0 && CStart < (int)Col, "Range Col Start out of bounds.");
+            static_assert(last_c >= 0 && last_c < (int)Col, "Range Col sequence exceeds Matrix dimensions.");
         }
 
         size_t out_r = 0;

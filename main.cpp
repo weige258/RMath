@@ -15,5 +15,11 @@ int main() {
    projection_matrix.SetProjectionMatrix(90.0f, 1.0f, 0.1f, 100.0f);
    cout << Vec4f(1,2,3,1)*view_matrix*Inverse(view_matrix)<< endl; 
    cout << Vec4f(1,2,3,1)*view_matrix*projection_matrix<< endl; 
+   
+   Range<0,42,3> range;
+   for(auto i:range){
+       cout << i << endl;
+   }
+
     return 0;
 }

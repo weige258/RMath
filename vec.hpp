@@ -180,7 +180,7 @@ public:
     }
 
     template <int start, int end, int step>
-    constexpr auto operator[](StaticRange<start, end, step> range) const
+    constexpr auto operator[](Range<start, end, step> range) const
     {
         constexpr size_t outDim = decltype(range)::size;
 
