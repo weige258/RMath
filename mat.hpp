@@ -644,7 +644,7 @@ public:
         T half_w = width / static_cast<T>(2);
         T half_h = height / static_cast<T>(2);
 
-        SetOrthoMartrix(-half_w, half_w, half_h, -half_h, static_cast<T>(-1), static_cast<T>(1));
+        SetProjectionMatrix(-half_w, half_w, half_h, -half_h, static_cast<T>(-1), static_cast<T>(1));
     }
 
     // 查询方法
