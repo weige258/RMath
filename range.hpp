@@ -13,7 +13,7 @@ struct Range final
     static_assert(Step != 0, "Step cannot be zero");
 
     // 编译期计算元素个数
-    static constexpr int size = []()
+    static constexpr size_t size()
     {
         if constexpr (Step > 0)
         {
@@ -23,8 +23,9 @@ struct Range final
         {
             return (End < Start) ? (Start - End - Step - 1) / (-Step) : 0;
         }
-    }();
-
+    };
+    
+    // 迭代器
     struct Iterator
     {
         int current;
@@ -48,19 +49,48 @@ struct Range final
                 return current > other.current;
         }
     };
+    
+    constexpr Iterator begin() const { return Iterator{Start}; }
+    constexpr Iterator end() const { return Iterator{End}; }
 
     // 索引访问
     constexpr int operator[](const size_t &index) const
     {
-        if (index >= static_cast<std::size_t>(size))
+        if (index >= static_cast<std::size_t>(size()))
         {
             throw std::out_of_range("Range index out of bounds!");
         }
         return Start + static_cast<int>(index) * Step;
     }
+    
+    //值访问
+    static constexpr std::array<int, size()> values() {
+        return []<std::size_t... Is>(std::index_sequence<Is...>) {
+            return std::array<int, size()>{ (Start + static_cast<int>(Is) * Step)... };
+        }(std::make_index_sequence<size()>{});
+    }
 
-    constexpr Iterator begin() const { return Iterator{Start}; }
-    constexpr Iterator end() const { return Iterator{End}; }
+    constexpr operator std::vector<int>() const {
+        return []<std::size_t... Is>(std::index_sequence<Is...>) {
+            return std::vector<int>{ (Start + static_cast<int>(Is) * Step)... };
+        }(std::make_index_sequence<size()>{});
+    }
+
+    constexpr operator std::list<int>() const {
+        std::list<int> result;
+        for (int val : *this) {
+            result.push_back(val);
+        }
+        return result;
+    }
+
+    operator std::array<int, size()>(){
+        return []<std::size_t... Is>(std::index_sequence<Is...>) {
+            return std::array<int, size()>{ (Start + static_cast<int>(Is) * Step)... };
+        }(std::make_index_sequence<size()>{});
+    }
+
+    
 };
 
 #endif

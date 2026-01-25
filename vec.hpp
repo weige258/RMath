@@ -5,6 +5,7 @@
 #include <concepts>
 #include <iostream>
 #include <cmath>
+#include <numbers>
 #include "range.hpp"
 
 #ifndef VEC_HPP
@@ -382,15 +383,6 @@ public:
         return result;
     }
 
-    constexpr Vec operator^(const Vec &other) const
-        requires(N == 3)
-    {
-        return Vec(
-            _data[1] * other._data[2] - _data[2] * other._data[1],
-            _data[2] * other._data[0] - _data[0] * other._data[2],
-            _data[0] * other._data[1] - _data[1] * other._data[0]);
-    }
-
     constexpr Vec operator-()
     {
         Vec result{};
@@ -546,6 +538,36 @@ auto Dot(const Vecs &...vecs)
     return total_sum;
 }
 
+// 叉积
+template <Detail::NumericVec T, Detail::NumericVec U, std::size_t N>
+constexpr auto Cross(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
+    requires(N == 2 || N == 3 || N == 7)
+{
+    using ResultType = std::common_type_t<T, U>;
+
+    if constexpr (N == 2) {
+        return static_cast<ResultType>(lhs[0]) * rhs[1] - static_cast<ResultType>(lhs[1]) * rhs[0];
+    }
+    else if constexpr (N == 3) {
+        return Vec<ResultType, 3>{
+            static_cast<ResultType>(lhs[1]) * rhs[2] - static_cast<ResultType>(lhs[2]) * rhs[1],
+            static_cast<ResultType>(lhs[2]) * rhs[0] - static_cast<ResultType>(lhs[0]) * rhs[2],
+            static_cast<ResultType>(lhs[0]) * rhs[1] - static_cast<ResultType>(lhs[1]) * rhs[0]
+        };
+    }
+    else if constexpr (N == 7) {
+        Vec<ResultType, 7> res;
+        res[0] = lhs[1]*rhs[3] - lhs[3]*rhs[1] + lhs[2]*rhs[6] - lhs[6]*rhs[2] + lhs[4]*rhs[5] - lhs[5]*rhs[4];
+        res[1] = lhs[2]*rhs[4] - lhs[4]*rhs[2] + lhs[3]*rhs[0] - lhs[0]*rhs[3] + lhs[5]*rhs[6] - lhs[6]*rhs[5];
+        res[2] = lhs[3]*rhs[5] - lhs[5]*rhs[3] + lhs[4]*rhs[1] - lhs[1]*rhs[4] + lhs[6]*rhs[0] - lhs[0]*rhs[6];
+        res[3] = lhs[4]*rhs[6] - lhs[6]*rhs[4] + lhs[5]*rhs[2] - lhs[2]*rhs[5] + lhs[0]*rhs[1] - lhs[1]*rhs[0];
+        res[4] = lhs[5]*rhs[0] - lhs[0]*rhs[5] + lhs[6]*rhs[3] - lhs[3]*rhs[6] + lhs[1]*rhs[2] - lhs[2]*rhs[1];
+        res[5] = lhs[6]*rhs[1] - lhs[1]*rhs[6] + lhs[0]*rhs[4] - lhs[4]*rhs[0] + lhs[2]*rhs[3] - lhs[3]*rhs[2];
+        res[6] = lhs[0]*rhs[2] - lhs[2]*rhs[0] + lhs[1]*rhs[5] - lhs[5]*rhs[1] + lhs[3]*rhs[4] - lhs[4]*rhs[3];
+        return res;
+    }
+}
+
 // 向量 Hadamard 积 (按元素相乘)
 template <typename... Args>
     requires(sizeof...(Args) >= 2) &&
@@ -611,7 +633,7 @@ auto Lerp(const Vec<T, N> &a, const Vec<U, N> &b, V t)
     return Vec<ResultT, N>(a) * (static_cast<ResultT>(1.0) - static_cast<ResultT>(t)) + Vec<ResultT, N>(b) * static_cast<ResultT>(t);
 }
 
-// 2. 投影 Project
+// 投影 Project
 template <Detail::NumericVec T, Detail::NumericVec U, std::size_t N>
 auto Project(const Vec<T, N> &a, const Vec<U, N> &b)
 {
@@ -621,12 +643,60 @@ auto Project(const Vec<T, N> &a, const Vec<U, N> &b)
     return Vec<ResultT, N>(b) * (static_cast<ResultT>(dot_val) / static_cast<ResultT>(b_mag_sq));
 }
 
-// 3. 反射 Reflect
+// 反射 Reflect
 template <Detail::NumericVec T, Detail::NumericVec U, std::size_t N>
 auto Reflect(const Vec<T, N> &a, const Vec<U, N> &n)
 {
     using ResultT = std::common_type_t<T, U>;
     return Vec<ResultT, N>(a) - Vec<ResultT, N>(n) * (static_cast<ResultT>(2) * Dot(a, n));
+}
+
+// 计算两个向量之间的弧度
+template <Detail::NumericVec T, Detail::NumericVec U, std::size_t N>
+constexpr double Radian(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
+{
+    double dot = static_cast<double>(Dot(lhs , rhs));
+    double len_product = Length(lhs) * Length(rhs);
+
+    if (len_product < 1e-9)
+        return 0.0;
+
+    double cos_theta = dot / len_product;
+
+    if (cos_theta > 1.0)
+        cos_theta = 1.0;
+    if (cos_theta < -1.0)
+        cos_theta = -1.0;
+
+    return std::acos(cos_theta);
+}
+
+// 计算两个向量之间的角度 
+template <Detail::NumericVec T, Detail::NumericVec U, std::size_t N>
+constexpr double Degree(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
+{
+
+    double dot = 0.0;
+    for (size_t i = 0; i < N; ++i) {
+        dot += static_cast<double>(lhs[i]) * static_cast<double>(rhs[i]);
+    }
+
+    double len_lhs_sq = 0.0;
+    double len_rhs_sq = 0.0;
+    for (size_t i = 0; i < N; ++i) {
+        len_lhs_sq += static_cast<double>(lhs[i]) * static_cast<double>(lhs[i]);
+        len_rhs_sq += static_cast<double>(rhs[i]) * static_cast<double>(rhs[i]);
+    }
+    double len_product = std::sqrt(len_lhs_sq) * std::sqrt(len_rhs_sq);
+
+    if (len_product < 1e-9)
+        return 0.0;
+
+    double cos_theta = dot / len_product;
+    if (cos_theta > 1.0) cos_theta = 1.0;
+    if (cos_theta < -1.0) cos_theta = -1.0;
+
+    return std::acos(cos_theta) * (180.0 / std::numbers::pi);
 }
 
 // 输出运算符
@@ -674,28 +744,33 @@ struct VecView final
 {
 private:
     Vec<T, N> &_original_vec;
-    std::array<size_t, Range<start, end, step>::size> _ref_index;
+    std::array<size_t, Range<start, end, step>::size()> _ref_index;
 
 public:
     // 构造函数
-    constexpr VecView(Vec<T, N> &original_vec, Range<start, end, step> range) 
-        requires (
+    constexpr VecView(Vec<T, N> &original_vec, Range<start, end, step> range)
+        requires(
             step != 0 &&
-            []<int... Is>(std::integer_sequence<int, Is...>) {
-                auto get_idx = [](int i) {
+            []<int... Is>(std::integer_sequence<int, Is...>)
+            {
+                auto get_idx = [](int i)
+                {
                     int val = start + i * step;
                     return (val < 0) ? (static_cast<int>(N) + val) : val;
                 };
                 return ((get_idx(Is) >= 0 && get_idx(Is) < static_cast<int>(N)) && ...);
-            }(std::make_integer_sequence<int, Range<start, end, step>::size>{})
-        )
+            }(std::make_integer_sequence<int, Range<start, end, step>::size()>{}))
         : _original_vec(original_vec)
     {
         size_t i = 0;
-        for (auto val : range) {
-            if (val < 0) {
+        for (auto val : range)
+        {
+            if (val < 0)
+            {
                 _ref_index[i++] = static_cast<size_t>(static_cast<int>(N) + val);
-            } else {
+            }
+            else
+            {
                 _ref_index[i++] = static_cast<size_t>(val);
             }
         }
@@ -703,79 +778,95 @@ public:
 
     // 赋值
     template <Detail::NumericVec U, size_t M>
-    requires(Range<start, end, step>::size == M)
-    constexpr VecView& operator=(const Vec<U,M>& other){
-        for(size_t i=0;i<Range<start, end, step>::size;++i){
+        requires(Range<start, end, step>::size() == M)
+    constexpr VecView &operator=(const Vec<U, M> &other)
+    {
+        for (size_t i = 0; i < Range<start, end, step>::size; ++i)
+        {
             _original_vec[_ref_index[i]] = static_cast<T>(other[i]);
         }
         return *this;
     }
 
     template <Detail::NumericVec U>
-    constexpr VecView& operator=(const std::initializer_list<U>& list){
-        if(list.size() != Range<start, end, step>::size){
+    constexpr VecView &operator=(const std::initializer_list<U> &list)
+    {
+        if (list.size() != Range<start, end, step>::size())
+        {
             throw std::runtime_error("Initializer list size mismatch in VecView assignment");
         }
-        size_t i=0;
-        for(const auto& val : list){
+        size_t i = 0;
+        for (const auto &val : list)
+        {
             _original_vec[_ref_index[i++]] = static_cast<T>(val);
         }
         return *this;
     }
 
     template <Detail::NumericVec U>
-    constexpr VecView& operator=(const std::array<U, Range<start, end, step>::size>& other){
-        for(size_t i=0;i<Range<start, end, step>::size;++i){
-            _original_vec[_ref_index[i]] = static_cast<T>(other[i]);
-        }
-        return *this;
-    }
-    
-    template <Detail::NumericVec U>
-    constexpr VecView& operator=(const std::array<U, Range<start, end, step>::size>&& other){
-        for(size_t i=0;i<Range<start, end, step>::size;++i){
+    constexpr VecView &operator=(const std::array<U, Range<start, end, step>::size()> &other)
+    {
+        for (size_t i = 0; i < Range<start, end, step>::size(); ++i)
+        {
             _original_vec[_ref_index[i]] = static_cast<T>(other[i]);
         }
         return *this;
     }
 
     template <Detail::NumericVec U>
-    constexpr VecView& operator=(const std::list<U>& other){
-        if(other.size() != Range<start, end, step>::size){
+    constexpr VecView &operator=(const std::array<U, Range<start, end, step>::size()> &&other)
+    {
+        for (size_t i = 0; i < Range<start, end, step>::size(); ++i)
+        {
+            _original_vec[_ref_index[i]] = static_cast<T>(other[i]);
+        }
+        return *this;
+    }
+
+    template <Detail::NumericVec U>
+    constexpr VecView &operator=(const std::list<U> &other)
+    {
+        if (other.size() != Range<start, end, step>::size())
+        {
             throw std::runtime_error("List size mismatch in VecView assignment");
         }
-        size_t i=0;
-        for(const auto& val : other){
+        size_t i = 0;
+        for (const auto &val : other)
+        {
             _original_vec[_ref_index[i++]] = static_cast<T>(val);
         }
         return *this;
     }
 
     template <Detail::NumericVec U>
-    constexpr VecView& operator=(const std::vector<U>& other){
-        if(other.size() != Range<start, end, step>::size){
+    constexpr VecView &operator=(const std::vector<U> &other)
+    {
+        if (other.size() != Range<start, end, step>::size())
+        {
             throw std::runtime_error("Vector size mismatch in VecView assignment");
         }
-        for(size_t i=0;i<Range<start, end, step>::size;++i){
+        for (size_t i = 0; i < Range<start, end, step>::size(); ++i)
+        {
             _original_vec[_ref_index[i]] = static_cast<T>(other[i]);
         }
         return *this;
     }
 
     template <Detail::NumericVec U>
-    constexpr VecView& operator=(const std::span<U, Range<start, end, step>::size>& other){
-        for(size_t i=0;i<Range<start, end, step>::size;++i){
+    constexpr VecView &operator=(const std::span<U, Range<start, end, step>::size()> &other)
+    {
+        for (size_t i = 0; i < Range<start, end, step>::size(); ++i)
+        {
             _original_vec[_ref_index[i]] = static_cast<T>(other[i]);
         }
         return *this;
     }
-
 
     // 隐式转换回 Vec
     template <Detail::NumericVec U>
-    constexpr operator Vec<U, Range<start, end, step>::size>() const
+    constexpr operator Vec<U, Range<start, end, step>::size()>() const
     {
-        Vec<U, Range<start, end, step>::size> result;
+        Vec<U, Range<start, end, step>::size()> result;
 
         size_t i = 0;
         for (size_t ref_index : _ref_index)
@@ -795,7 +886,7 @@ public:
 template <Detail::NumericVec T, std::size_t N, int start, int end, int step>
 constexpr std::ostream &operator<<(std::ostream &os, const VecView<T, N, start, end, step> &view)
 {
-    os << Vec<T, Range<start, end, step>::size>(view);
+    os << Vec<T, Range<start, end, step>::size()>(view);
     return os;
 }
 

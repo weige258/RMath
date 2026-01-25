@@ -42,6 +42,11 @@ namespace Detail
     };
 };
 
+// 矩阵视图类型声明
+template <Detail::NumericMat T, size_t Row, size_t Col, typename RowRange, typename ColRange>
+struct MatView;
+
+// 矩阵类型
 template <Detail::NumericMat T, size_t Row, size_t Col>
 struct Mat final
 {
@@ -232,39 +237,9 @@ public:
     template <int RStart, int REnd, int RStep,
               int CStart, int CEnd, int CStep>
     constexpr auto operator[](Range<RStart, REnd, RStep> rr,
-                              Range<CStart, CEnd, CStep> rc) const
+                              Range<CStart, CEnd, CStep> rc)
     {
-        constexpr size_t OutRow = static_cast<size_t>(decltype(rr)::size);
-        constexpr size_t OutCol = static_cast<size_t>(decltype(rc)::size);
-        Mat<T, OutRow, OutCol> result;
-
-        if constexpr (OutRow > 0)
-        {
-            constexpr int last_r = RStart + (static_cast<int>(OutRow) - 1) * RStep;
-            static_assert(RStart >= 0 && RStart < (int)Row, "Range Row Start out of bounds.");
-            static_assert(last_r >= 0 && last_r < (int)Row, "Range Row sequence exceeds Matrix dimensions.");
-        }
-
-        if constexpr (OutCol > 0)
-        {
-            constexpr int last_c = CStart + (static_cast<int>(OutCol) - 1) * CStep;
-            static_assert(CStart >= 0 && CStart < (int)Col, "Range Col Start out of bounds.");
-            static_assert(last_c >= 0 && last_c < (int)Col, "Range Col sequence exceeds Matrix dimensions.");
-        }
-
-        size_t out_r = 0;
-        for (auto r_idx : rr)
-        {
-            size_t out_c = 0;
-            for (auto c_idx : rc)
-            {
-                result[out_r, out_c] = (*this)[r_idx, c_idx];
-                out_c++;
-            }
-            out_r++;
-        }
-
-        return result;
+        return MatView<T, Row, Col, decltype(rr), decltype(rc)>(*this, rr, rc);
     }
 
     constexpr Mat<T, 1, Col> GetRow(size_t row) const
@@ -588,7 +563,7 @@ public:
         *this = rotation_matrix * translation_matrix;
     }
 
-        constexpr void SetViewMatrix(const Vec<T, 2> &pos, T rotation_radians, T zoom)
+    constexpr void SetViewMatrix(const Vec<T, 2> &pos, T rotation_radians, T zoom)
         requires(Row == 4 && Col == 4)
     {
         this->_data.fill(0);
@@ -948,9 +923,15 @@ std::ostream &operator<<(std::ostream &os, const Mat<T, Row, Col> &mat)
         os << "[";
         for (size_t c = 0; c < Col; ++c)
         {
-            if (mat[r,c]>=0){os << " ";}
+            if (mat[r, c] >= 0)
+            {
+                os << " ";
+            }
             os << mat[r, c];
-            if (c + 1 < Col){os << ", ";}
+            if (c + 1 < Col)
+            {
+                os << ", ";
+            }
         }
         os << "]";
         if (r + 1 < Row)
@@ -973,5 +954,138 @@ using Mat4i = Mat<int, 4, 4>;
 using Mat4f = Mat<float, 4, 4>;
 using Mat4d = Mat<double, 4, 4>;
 using Mat4l = Mat<long, 4, 4>;
+
+// 矩阵视图
+template <Detail::NumericMat T, size_t Row, size_t Col, typename RowRange, typename ColRange>
+struct MatView final
+{
+private:
+    Mat<T, Row, Col> &_original_mat;
+    static constexpr auto _row_indices = RowRange::values();
+    static constexpr auto _col_indices = ColRange::values();
+
+public:
+    // 构造函数
+    MatView(Mat<T, Row, Col> &mat, RowRange rr, ColRange rc) : _original_mat(mat) {}
+
+    // 赋值
+    template <Detail::NumericMat U>
+    constexpr MatView &operator=(const Mat<U, RowRange::size(), ColRange::size()> &other)
+    {
+        for (size_t r = 0; r < RowRange::size(); ++r)
+        {
+            for (size_t c = 0; c < ColRange::size(); ++c)
+            {
+                _original_mat[_row_indices[r], _col_indices[c]] = static_cast<T>(other[r, c]);
+            }
+        }
+        return *this;
+    }
+
+    template <Detail::NumericMat U>
+    constexpr MatView& operator=(const std::initializer_list<U> &ilist)
+    {
+        if (ilist.size() != RowRange::size() * ColRange::size())
+        {
+            throw std::runtime_error("Size mismatch");
+        }
+        size_t index = 0;
+        for (const auto &value : ilist)
+        {
+            size_t r = index / ColRange::size();
+            size_t c = index % ColRange::size();
+            _original_mat[_row_indices[r], _col_indices[c]] = static_cast<T>(value);
+            index++;
+        }
+        return *this;
+    }
+
+    template <Detail::NumericMat U>
+    constexpr MatView &operator=(const std::array<U, RowRange::size() * ColRange::size()> &arr)
+    {
+        size_t index = 0;
+        for (size_t r = 0; r < RowRange::size(); ++r)
+        {
+            for (size_t c = 0; c < ColRange::size(); ++c)
+            {
+                _original_mat[_row_indices[r], _col_indices[c]] = static_cast<T>(arr[index++]);
+            }
+        }
+        return *this;
+    }
+
+    template <Detail::NumericMat U>
+    constexpr MatView &operator=(const std::vector<U> &vec)
+    {
+        if (vec.size() != RowRange::size() * ColRange::size())
+        {
+            throw std::runtime_error("Size mismatch");
+        }
+        size_t index = 0;
+        for (size_t r = 0; r < RowRange::size(); ++r)
+        {
+            for (size_t c = 0; c < ColRange::size(); ++c)
+            {
+                _original_mat[_row_indices[r], _col_indices[c]] = static_cast<T>(vec[index++]);
+            }
+        }
+        return *this;
+    }
+
+    template <Detail::NumericMat U>
+    constexpr MatView &operator=(const std::list<U> &list)
+    {
+        if (list.size() != RowRange::size() * ColRange::size())
+        {
+            throw std::runtime_error("Size mismatch");
+        }
+        size_t index = 0;
+        for (const auto &value : list)
+        {
+            size_t r = index / ColRange::size();
+            size_t c = index % ColRange::size();
+            _original_mat[_row_indices[r], _col_indices[c]] = static_cast<T>(value);
+            index++;
+        }
+        return *this;
+    }
+
+    template <Detail::NumericMat U>
+    constexpr MatView& operator=(const std::span<U, RowRange::size() * ColRange::size()> &span)
+    {
+        size_t index = 0;
+        for (size_t r = 0; r < RowRange::size(); ++r)
+        {
+            for (size_t c = 0; c < ColRange::size(); ++c)
+            {
+                _original_mat[_row_indices[r], _col_indices[c]] = static_cast<T>(span[index++]);
+            }
+        }
+        return *this;
+    }
+
+    //// 隐式转换回Mat
+    template <Detail::NumericMat U>
+    constexpr operator Mat<U, RowRange::size(), ColRange::size()>() const
+    {
+        Mat<U, RowRange::size(), ColRange::size()> result;
+        for (size_t r = 0; r < RowRange::size(); ++r)
+        {
+            for (size_t c = 0; c < ColRange::size(); ++c)
+            {
+                result[r, c] = static_cast<U>(_original_mat[_row_indices[r], _col_indices[c]]);
+            }
+        }
+        return result;
+    }
+};
+
+// 视图输出运算符重载
+template <Detail::NumericMat T, size_t Row, size_t Col, typename RowRange, typename ColRange>
+std::ostream &operator<<(std::ostream &os, const MatView<T, Row, Col, RowRange, ColRange> &mat_view)
+{
+    os << Mat<T, Row, Col>(mat_view);
+    return os;
+}
 
 #endif // MAT_HPP
