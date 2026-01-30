@@ -13,7 +13,7 @@ struct Range final
     static_assert(Step != 0, "Step cannot be zero");
 
     // 编译期计算元素个数
-    static constexpr size_t size()
+    static constexpr size_t Size()
     {
         if constexpr (Step > 0)
         {
@@ -25,7 +25,7 @@ struct Range final
         }
     };
     
-    // 迭代器
+    // 迭代器支持
     struct Iterator
     {
         int current;
@@ -56,7 +56,7 @@ struct Range final
     // 索引访问
     constexpr int operator[](const size_t &index) const
     {
-        if (index >= static_cast<std::size_t>(size()))
+        if (index >= static_cast<std::size_t>(Size()))
         {
             throw std::out_of_range("Range index out of bounds!");
         }
@@ -64,16 +64,16 @@ struct Range final
     }
     
     //值访问
-    static constexpr std::array<int, size()> values() {
+    static constexpr std::array<int, Size()> Values() {
         return []<std::size_t... Is>(std::index_sequence<Is...>) {
-            return std::array<int, size()>{ (Start + static_cast<int>(Is) * Step)... };
-        }(std::make_index_sequence<size()>{});
+            return std::array<int, Size()>{ (Start + static_cast<int>(Is) * Step)... };
+        }(std::make_index_sequence<Size()>{});
     }
 
     constexpr operator std::vector<int>() const {
         return []<std::size_t... Is>(std::index_sequence<Is...>) {
             return std::vector<int>{ (Start + static_cast<int>(Is) * Step)... };
-        }(std::make_index_sequence<size()>{});
+        }(std::make_index_sequence<Size()>{});
     }
 
     constexpr operator std::list<int>() const {
@@ -84,10 +84,10 @@ struct Range final
         return result;
     }
 
-    operator std::array<int, size()>(){
+    operator std::array<int, Size()>(){
         return []<std::size_t... Is>(std::index_sequence<Is...>) {
-            return std::array<int, size()>{ (Start + static_cast<int>(Is) * Step)... };
-        }(std::make_index_sequence<size()>{});
+            return std::array<int, Size()>{ (Start + static_cast<int>(Is) * Step)... };
+        }(std::make_index_sequence<Size()>{});
     }
 
     

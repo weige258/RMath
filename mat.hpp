@@ -70,7 +70,7 @@ public:
     template <Detail::NumericMat U>
     constexpr Mat(const std::initializer_list<U> &list)
     {
-        if (list.size() != Row * Col)
+        if (list.Size() != Row * Col)
         {
             throw std::runtime_error("Size mismatch");
         }
@@ -83,7 +83,7 @@ public:
 
     constexpr Mat(const std::initializer_list<Detail::RowData<T, Col>> &list)
     {
-        if (list.size() != Row)
+        if (list.Size() != Row)
         {
             throw std::runtime_error("Row count mismatch");
         }
@@ -138,7 +138,7 @@ public:
     constexpr Mat(const std::list<U> &list)
         requires std::convertible_to<U, T>
     {
-        if (list.size() != Row * Col)
+        if (list.Size() != Row * Col)
         {
             throw std::runtime_error("Size mismatch");
         }
@@ -150,7 +150,7 @@ public:
     constexpr Mat(const std::vector<U> &vec)
         requires std::convertible_to<U, T>
     {
-        if (vec.size() != Row * Col)
+        if (vec.Size() != Row * Col)
         {
             throw std::runtime_error("Size mismatch");
         }
@@ -623,17 +623,17 @@ public:
     }
 
     // 查询方法
-    static constexpr size_t size() { return Row * Col; };
+    static constexpr size_t Size() { return Row * Col; };
 
-    static constexpr size_t row_size() { return Row; };
+    static constexpr size_t RowSize() { return Row; };
 
-    static constexpr size_t col_size() { return Col; };
+    static constexpr size_t ColSize() { return Col; };
 
-    static constexpr std::tuple<size_t, size_t> shape() { return std::make_tuple(Row, Col); };
+    static constexpr std::tuple<size_t, size_t> Shape() { return std::make_tuple(Row, Col); };
 
-    static const std::type_info &type() noexcept { return typeid(Mat<T, Row, Col>); }
+    static const std::type_info &Type() noexcept { return typeid(Mat<T, Row, Col>); }
 
-    static const std::type_info &value_type() noexcept { return typeid(T); }
+    static const std::type_info &ValueType() noexcept { return typeid(T); }
 };
 
 // 向量与矩阵乘法
@@ -662,10 +662,10 @@ constexpr auto Hadamard(const Args &...args)
 {
     using FirstArg = std::tuple_element_t<0, std::tuple<Args...>>;
 
-    constexpr size_t R = std::remove_cvref_t<FirstArg>::row_size();
-    constexpr size_t C = std::remove_cvref_t<FirstArg>::col_size();
+    constexpr size_t R = std::remove_cvref_t<FirstArg>::RowSize();
+    constexpr size_t C = std::remove_cvref_t<FirstArg>::ColSize();
 
-    static_assert((... && (Args::row_size() == R && Args::col_size() == C)),
+    static_assert((... && (Args::RowSize() == R && Args::ColSize() == C)),
                   "All matrices must have the same dimensions.");
 
     using ResultScalar = std::common_type_t<typename std::remove_cvref_t<Args>::mat_type_alias...>;
@@ -961,8 +961,8 @@ struct MatView final
 {
 private:
     Mat<T, Row, Col> &_original_mat;
-    static constexpr auto _row_indices = RowRange::values();
-    static constexpr auto _col_indices = ColRange::values();
+    static constexpr auto _row_indices = RowRange::Values();
+    static constexpr auto _col_indices = ColRange::Values();
 
 public:
     // 构造函数
@@ -970,11 +970,11 @@ public:
 
     // 赋值
     template <Detail::NumericMat U>
-    constexpr MatView &operator=(const Mat<U, RowRange::size(), ColRange::size()> &other)
+    constexpr MatView &operator=(const Mat<U, RowRange::Size(), ColRange::Size()> &other)
     {
-        for (size_t r = 0; r < RowRange::size(); ++r)
+        for (size_t r = 0; r < RowRange::Size(); ++r)
         {
-            for (size_t c = 0; c < ColRange::size(); ++c)
+            for (size_t c = 0; c < ColRange::Size(); ++c)
             {
                 _original_mat[_row_indices[r], _col_indices[c]] = static_cast<T>(other[r, c]);
             }
@@ -985,15 +985,15 @@ public:
     template <Detail::NumericMat U>
     constexpr MatView& operator=(const std::initializer_list<U> &ilist)
     {
-        if (ilist.size() != RowRange::size() * ColRange::size())
+        if (ilist.Size() != RowRange::Size() * ColRange::Size())
         {
             throw std::runtime_error("Size mismatch");
         }
         size_t index = 0;
         for (const auto &value : ilist)
         {
-            size_t r = index / ColRange::size();
-            size_t c = index % ColRange::size();
+            size_t r = index / ColRange::Size();
+            size_t c = index % ColRange::Size();
             _original_mat[_row_indices[r], _col_indices[c]] = static_cast<T>(value);
             index++;
         }
@@ -1001,12 +1001,12 @@ public:
     }
 
     template <Detail::NumericMat U>
-    constexpr MatView &operator=(const std::array<U, RowRange::size() * ColRange::size()> &arr)
+    constexpr MatView &operator=(const std::array<U, RowRange::Size() * ColRange::Size()> &arr)
     {
         size_t index = 0;
-        for (size_t r = 0; r < RowRange::size(); ++r)
+        for (size_t r = 0; r < RowRange::Size(); ++r)
         {
-            for (size_t c = 0; c < ColRange::size(); ++c)
+            for (size_t c = 0; c < ColRange::Size(); ++c)
             {
                 _original_mat[_row_indices[r], _col_indices[c]] = static_cast<T>(arr[index++]);
             }
@@ -1017,14 +1017,14 @@ public:
     template <Detail::NumericMat U>
     constexpr MatView &operator=(const std::vector<U> &vec)
     {
-        if (vec.size() != RowRange::size() * ColRange::size())
+        if (vec.Size() != RowRange::Size() * ColRange::Size())
         {
             throw std::runtime_error("Size mismatch");
         }
         size_t index = 0;
-        for (size_t r = 0; r < RowRange::size(); ++r)
+        for (size_t r = 0; r < RowRange::Size(); ++r)
         {
-            for (size_t c = 0; c < ColRange::size(); ++c)
+            for (size_t c = 0; c < ColRange::Size(); ++c)
             {
                 _original_mat[_row_indices[r], _col_indices[c]] = static_cast<T>(vec[index++]);
             }
@@ -1035,15 +1035,15 @@ public:
     template <Detail::NumericMat U>
     constexpr MatView &operator=(const std::list<U> &list)
     {
-        if (list.size() != RowRange::size() * ColRange::size())
+        if (list.Size() != RowRange::Size() * ColRange::Size())
         {
             throw std::runtime_error("Size mismatch");
         }
         size_t index = 0;
         for (const auto &value : list)
         {
-            size_t r = index / ColRange::size();
-            size_t c = index % ColRange::size();
+            size_t r = index / ColRange::Size();
+            size_t c = index % ColRange::Size();
             _original_mat[_row_indices[r], _col_indices[c]] = static_cast<T>(value);
             index++;
         }
@@ -1051,12 +1051,12 @@ public:
     }
 
     template <Detail::NumericMat U>
-    constexpr MatView& operator=(const std::span<U, RowRange::size() * ColRange::size()> &span)
+    constexpr MatView& operator=(const std::span<U, RowRange::Size() * ColRange::Size()> &span)
     {
         size_t index = 0;
-        for (size_t r = 0; r < RowRange::size(); ++r)
+        for (size_t r = 0; r < RowRange::Size(); ++r)
         {
-            for (size_t c = 0; c < ColRange::size(); ++c)
+            for (size_t c = 0; c < ColRange::Size(); ++c)
             {
                 _original_mat[_row_indices[r], _col_indices[c]] = static_cast<T>(span[index++]);
             }
@@ -1066,12 +1066,12 @@ public:
 
     //// 隐式转换回Mat
     template <Detail::NumericMat U>
-    constexpr operator Mat<U, RowRange::size(), ColRange::size()>() const
+    constexpr operator Mat<U, RowRange::Size(), ColRange::Size()>() const
     {
-        Mat<U, RowRange::size(), ColRange::size()> result;
-        for (size_t r = 0; r < RowRange::size(); ++r)
+        Mat<U, RowRange::Size(), ColRange::Size()> result;
+        for (size_t r = 0; r < RowRange::Size(); ++r)
         {
-            for (size_t c = 0; c < ColRange::size(); ++c)
+            for (size_t c = 0; c < ColRange::Size(); ++c)
             {
                 result[r, c] = static_cast<U>(_original_mat[_row_indices[r], _col_indices[c]]);
             }

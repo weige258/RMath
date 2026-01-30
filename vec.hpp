@@ -59,9 +59,9 @@ public:
 
     constexpr Vec(std::initializer_list<T> list)
     {
-        if (list.size() != N)
+        if (list.Size() != N)
         {
-            throw std::runtime_error("Initializer list size mismatch");
+            throw std::runtime_error("Initializer list Size mismatch");
         }
         std::copy(list.begin(), list.end(), _data.begin());
     }
@@ -85,9 +85,9 @@ public:
     constexpr Vec(const std::list<U> &list)
         requires std::convertible_to<U, T>
     {
-        if (list.size() != N)
+        if (list.Size() != N)
         {
-            throw std::runtime_error("List size does not match vector dimension");
+            throw std::runtime_error("List Size does not match vector dimension");
         }
         std::copy(list.begin(), list.end(), _data.begin());
     }
@@ -96,9 +96,9 @@ public:
     constexpr Vec(const std::vector<U> &vector)
         requires std::convertible_to<U, T>
     {
-        if (vector.size() != N)
+        if (vector.Size() != N)
         {
-            throw std::runtime_error("Vector size does not match vector dimension");
+            throw std::runtime_error("Vector Size does not match vector dimension");
         }
         std::copy(vector.begin(), vector.end(), _data.begin());
     }
@@ -190,36 +190,36 @@ public:
         return VecView<T, N, start, end, step>(*this, range);
     }
 
-    constexpr T &x()
+    constexpr T &X()
         requires(0 < N)
     {
         return _data[0];
     }
 
-    constexpr T &y()
+    constexpr T &Y()
         requires(1 < N)
     {
         return _data[1];
     }
 
-    constexpr T &z()
+    constexpr T &Z()
         requires(2 < N)
     {
         return _data[2];
     }
 
-    constexpr T &w()
+    constexpr T &W()
         requires(3 < N)
     {
         return _data[3];
     }
 
-    constexpr VecView<T, N, 0, 3, 1> xyz()
+    constexpr VecView<T, N, 0, 3, 1> XYZ()
     {
         return VecView<T, N, 0, 3, 1>(*this, Range<0, 3, 1>());
     }
 
-    constexpr VecView<T, N, 0, 3, 1> rgb()
+    constexpr VecView<T, N, 0, 3, 1> RGB()
     {
         return VecView<T, N, 0, 3, 1>(*this, Range<0, 3, 1>());
     }
@@ -488,13 +488,13 @@ public:
     auto operator<=>(const Vec &other) const = default;
 
     // 查询方法
-    static constexpr size_t size() noexcept { return N; }
+    static constexpr size_t Size() noexcept { return N; }
 
-    static constexpr size_t size_in_bytes() noexcept { return N * sizeof(T); }
+    static constexpr size_t SizeInBytes() noexcept { return N * sizeof(T); }
 
-    static const std::type_info &type() noexcept { return typeid(Vec<T, N>); }
+    static const std::type_info &Type() noexcept { return typeid(Vec<T, N>); }
 
-    static const std::type_info &value_type() noexcept { return typeid(T); }
+    static const std::type_info &ValueType() noexcept { return typeid(T); }
 };
 
 // 模长
@@ -526,8 +526,8 @@ template <typename... Vecs>
     requires(sizeof...(Vecs) >= 2)
 auto Dot(const Vecs &...vecs)
 {
-    constexpr std::size_t N = (std::tuple_element_t<0, std::tuple<Vecs...>>::size());
-    static_assert(((vecs.size() == N) && ...), "All vectors must have the same dimension N");
+    constexpr std::size_t N = (std::tuple_element_t<0, std::tuple<Vecs...>>::Size());
+    static_assert(((vecs.Size() == N) && ...), "All vectors must have the same dimension N");
     using ResultType = std::common_type_t<typename Vecs::vec_type_alias...>;
     ResultType total_sum = 0;
     for (std::size_t i = 0; i < N; ++i)
@@ -576,9 +576,9 @@ constexpr auto Hadamard(const Args &...args)
 {
 
     using FirstArg = std::tuple_element_t<0, std::tuple<Args...>>;
-    constexpr size_t N = std::remove_cvref_t<FirstArg>::size();
+    constexpr size_t N = std::remove_cvref_t<FirstArg>::Size();
 
-    static_assert((... && (Args::size() == N)),
+    static_assert((... && (Args::Size() == N)),
                   "All vectors must have the same dimension for Hadamard product.");
 
     using ResultScalar = std::common_type_t<typename std::remove_cvref_t<Args>::vec_type_alias...>;
@@ -598,13 +598,13 @@ template <typename... Vecs>
     requires(sizeof...(Vecs) >= 1)
 auto Cat(const Vecs &...vecs)
 {
-    constexpr std::size_t TotalN = (Vecs::size() + ...);
+    constexpr std::size_t TotalN = (Vecs::Size() + ...);
     using ResultT = std::common_type_t<typename Vecs::vec_type_alias...>;
     Vec<ResultT, TotalN> result;
     std::size_t offset = 0;
     ([&](const auto &v)
      {
-        for (std::size_t i = 0; i < v.size(); ++i) {
+        for (std::size_t i = 0; i < v.Size(); ++i) {
             result[offset++] = static_cast<ResultT>(v[i]);
         } }(vecs), ...);
 
@@ -744,7 +744,7 @@ struct VecView final
 {
 private:
     Vec<T, N> &_original_vec;
-    std::array<size_t, Range<start, end, step>::size()> _ref_index;
+    std::array<size_t, Range<start, end, step>::Size()> _ref_index;
 
 public:
     // 构造函数
@@ -759,7 +759,7 @@ public:
                     return (val < 0) ? (static_cast<int>(N) + val) : val;
                 };
                 return ((get_idx(Is) >= 0 && get_idx(Is) < static_cast<int>(N)) && ...);
-            }(std::make_integer_sequence<int, Range<start, end, step>::size()>{}))
+            }(std::make_integer_sequence<int, Range<start, end, step>::Size()>{}))
         : _original_vec(original_vec)
     {
         size_t i = 0;
@@ -778,10 +778,10 @@ public:
 
     // 赋值
     template <Detail::NumericVec U, size_t M>
-        requires(Range<start, end, step>::size() == M)
+        requires(Range<start, end, step>::Size() == M)
     constexpr VecView &operator=(const Vec<U, M> &other)
     {
-        for (size_t i = 0; i < Range<start, end, step>::size; ++i)
+        for (size_t i = 0; i < Range<start, end, step>::Size; ++i)
         {
             _original_vec[_ref_index[i]] = static_cast<T>(other[i]);
         }
@@ -791,9 +791,9 @@ public:
     template <Detail::NumericVec U>
     constexpr VecView &operator=(const std::initializer_list<U> &list)
     {
-        if (list.size() != Range<start, end, step>::size())
+        if (list.Size() != Range<start, end, step>::Size())
         {
-            throw std::runtime_error("Initializer list size mismatch in VecView assignment");
+            throw std::runtime_error("Initializer list Size mismatch in VecView assignment");
         }
         size_t i = 0;
         for (const auto &val : list)
@@ -804,9 +804,9 @@ public:
     }
 
     template <Detail::NumericVec U>
-    constexpr VecView &operator=(const std::array<U, Range<start, end, step>::size()> &other)
+    constexpr VecView &operator=(const std::array<U, Range<start, end, step>::Size()> &other)
     {
-        for (size_t i = 0; i < Range<start, end, step>::size(); ++i)
+        for (size_t i = 0; i < Range<start, end, step>::Size(); ++i)
         {
             _original_vec[_ref_index[i]] = static_cast<T>(other[i]);
         }
@@ -814,9 +814,9 @@ public:
     }
 
     template <Detail::NumericVec U>
-    constexpr VecView &operator=(const std::array<U, Range<start, end, step>::size()> &&other)
+    constexpr VecView &operator=(const std::array<U, Range<start, end, step>::Size()> &&other)
     {
-        for (size_t i = 0; i < Range<start, end, step>::size(); ++i)
+        for (size_t i = 0; i < Range<start, end, step>::Size(); ++i)
         {
             _original_vec[_ref_index[i]] = static_cast<T>(other[i]);
         }
@@ -826,9 +826,9 @@ public:
     template <Detail::NumericVec U>
     constexpr VecView &operator=(const std::list<U> &other)
     {
-        if (other.size() != Range<start, end, step>::size())
+        if (other.Size() != Range<start, end, step>::Size())
         {
-            throw std::runtime_error("List size mismatch in VecView assignment");
+            throw std::runtime_error("List Size mismatch in VecView assignment");
         }
         size_t i = 0;
         for (const auto &val : other)
@@ -841,11 +841,11 @@ public:
     template <Detail::NumericVec U>
     constexpr VecView &operator=(const std::vector<U> &other)
     {
-        if (other.size() != Range<start, end, step>::size())
+        if (other.Size() != Range<start, end, step>::Size())
         {
-            throw std::runtime_error("Vector size mismatch in VecView assignment");
+            throw std::runtime_error("Vector Size mismatch in VecView assignment");
         }
-        for (size_t i = 0; i < Range<start, end, step>::size(); ++i)
+        for (size_t i = 0; i < Range<start, end, step>::Size(); ++i)
         {
             _original_vec[_ref_index[i]] = static_cast<T>(other[i]);
         }
@@ -853,9 +853,9 @@ public:
     }
 
     template <Detail::NumericVec U>
-    constexpr VecView &operator=(const std::span<U, Range<start, end, step>::size()> &other)
+    constexpr VecView &operator=(const std::span<U, Range<start, end, step>::Size()> &other)
     {
-        for (size_t i = 0; i < Range<start, end, step>::size(); ++i)
+        for (size_t i = 0; i < Range<start, end, step>::Size(); ++i)
         {
             _original_vec[_ref_index[i]] = static_cast<T>(other[i]);
         }
@@ -864,9 +864,9 @@ public:
 
     // 隐式转换回 Vec
     template <Detail::NumericVec U>
-    constexpr operator Vec<U, Range<start, end, step>::size()>() const
+    constexpr operator Vec<U, Range<start, end, step>::Size()>() const
     {
-        Vec<U, Range<start, end, step>::size()> result;
+        Vec<U, Range<start, end, step>::Size()> result;
 
         size_t i = 0;
         for (size_t ref_index : _ref_index)
@@ -879,14 +879,14 @@ public:
     }
 
     // 获取视图大小
-    constexpr size_t size() const { return _ref_index.size(); }
+    constexpr size_t Size() const { return _ref_index.Size(); }
 };
 
 // 输出运算符重载
 template <Detail::NumericVec T, std::size_t N, int start, int end, int step>
 constexpr std::ostream &operator<<(std::ostream &os, const VecView<T, N, start, end, step> &view)
 {
-    os << Vec<T, Range<start, end, step>::size()>(view);
+    os << Vec<T, Range<start, end, step>::Size()>(view);
     return os;
 }
 
