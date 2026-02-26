@@ -52,16 +52,16 @@ struct Mat final
 {
 
 private:
-    std::array<T, Row * Col> _data;
+    std::array<T, Row * Col> m_data;
 
 public:
     using mat_type_alias = T;
 
 public:
     // 构造
-    constexpr Mat() { _data.fill(0); }
+    constexpr Mat() { m_data.fill(0); }
 
-    constexpr Mat(T num) { _data.fill(num); }
+    constexpr Mat(T num) { m_data.fill(num); }
 
     constexpr Mat(const Mat &other) = default;
 
@@ -77,7 +77,7 @@ public:
         size_t i = 0;
         for (const auto &val : list)
         {
-            _data[i++] = static_cast<T>(val);
+            m_data[i++] = static_cast<T>(val);
         }
     }
 
@@ -92,7 +92,7 @@ public:
         {
             for (size_t c = 0; c < Col; ++c)
             {
-                _data[r * Col + c] = row.row_values[c];
+                m_data[r * Col + c] = row.row_values[c];
             }
             r++;
         }
@@ -102,7 +102,7 @@ public:
     constexpr Mat(const Args &...args)
         requires(sizeof...(args) == Row * Col && (std::convertible_to<Args, T> && ...))
     {
-        _data = std::array<T, Row * Col>{static_cast<T>(args)...};
+        m_data = std::array<T, Row * Col>{static_cast<T>(args)...};
     };
 
     template <typename U, size_t OtherRow, size_t OtherCol>
@@ -111,7 +111,7 @@ public:
         static_assert(OtherRow == Row && OtherCol == Col, "Matrix dimension mismatch: Row and Col must be equal for conversion.");
         for (size_t i = 0; i < Row * Col; ++i)
         {
-            _data[i] = static_cast<T>(other[i]);
+            m_data[i] = static_cast<T>(other[i]);
         }
     }
 
@@ -120,7 +120,7 @@ public:
     {
         for (size_t i = 0; i < Row * Col; ++i)
         {
-            _data[i] = static_cast<T>(other[i]);
+            m_data[i] = static_cast<T>(other[i]);
         }
     }
 
@@ -128,11 +128,11 @@ public:
     {
         for (size_t i = 0; i < Row * Col; ++i)
         {
-            _data[i] = arr[i];
+            m_data[i] = arr[i];
         }
     }
 
-    constexpr Mat(const std::array<T, Row * Col> &arr) : _data(arr) {}
+    constexpr Mat(const std::array<T, Row * Col> &arr) : m_data(arr) {}
 
     template <Detail::NumericMat U>
     constexpr Mat(const std::list<U> &list)
@@ -143,7 +143,7 @@ public:
             throw std::runtime_error("Size mismatch");
         }
 
-        std::copy(list.begin(), list.end(), _data.begin());
+        std::copy(list.begin(), list.end(), m_data.begin());
     }
 
     template <Detail::NumericMat U>
@@ -155,12 +155,12 @@ public:
             throw std::runtime_error("Size mismatch");
         }
 
-        std::copy(vec.begin(), vec.end(), _data.begin());
+        std::copy(vec.begin(), vec.end(), m_data.begin());
     }
 
     constexpr Mat(const std::span<T, Row * Col> &span)
     {
-        std::copy(span.begin(), span.end(), _data.begin());
+        std::copy(span.begin(), span.end(), m_data.begin());
     }
 
     static constexpr Mat<T, Row, Col> MakeIdentity()
@@ -181,57 +181,57 @@ public:
     {
         for (size_t i = 0; i < Row * Col; ++i)
         {
-            _data[i] = static_cast<T>(other[i]);
+            m_data[i] = static_cast<T>(other[i]);
         }
     }
 
     template <Detail::NumericMat U>
     constexpr operator std::array<U, Row *Col>() const
     {
-        return std::array<U, Row * Col>(_data.begin(), _data.end());
+        return std::array<U, Row * Col>(m_data.begin(), m_data.end());
     }
 
     template <Detail::NumericMat U>
     constexpr operator std::list<U>() const
     {
-        return std::list<U>(_data.begin(), _data.end());
+        return std::list<U>(m_data.begin(), m_data.end());
     }
 
     template <Detail::NumericMat U>
     constexpr operator std::vector<U>() const
     {
-        return std::vector<U>(_data.begin(), _data.end());
+        return std::vector<U>(m_data.begin(), m_data.end());
     }
 
     template <Detail::NumericMat U>
     constexpr operator std::span<U, Row *Col>() const
     {
-        return std::span<U, Row * Col>(_data.begin(), _data.end());
+        return std::span<U, Row * Col>(m_data.begin(), m_data.end());
     }
 
     // 指针转换
-    explicit operator T *() { return _data._data(); }
-    explicit operator const T *() const { return _data._data(); }
+    explicit operator T *() { return m_data._data(); }
+    explicit operator const T *() const { return m_data._data(); }
 
     // 访问
     constexpr T &operator[](size_t index)
     {
-        return _data[index];
+        return m_data[index];
     }
 
     constexpr const T &operator[](size_t index) const
     {
-        return _data[index];
+        return m_data[index];
     }
 
     constexpr T &operator[](size_t row, size_t col)
     {
-        return _data[row * Col + col];
+        return m_data[row * Col + col];
     }
 
     constexpr const T &operator[](size_t row, size_t col) const
     {
-        return _data[row * Col + col];
+        return m_data[row * Col + col];
     }
 
     template <int RStart, int REnd, int RStep,
@@ -249,7 +249,7 @@ public:
         size_t j = 0;
         for (size_t i = row * Col; i < row * Col + Col; ++i)
         {
-            result[j] = (_data[i]);
+            result[j] = (m_data[i]);
             j++;
         }
 
@@ -262,7 +262,7 @@ public:
 
         for (size_t i = 0; i < Row; ++i)
         {
-            result[i] = (_data[i * Col + col]);
+            result[i] = (m_data[i * Col + col]);
         }
 
         return result;
@@ -277,7 +277,7 @@ public:
     {
         for (size_t i = 0; i < Row * Col; ++i)
         {
-            _data[i] = value;
+            m_data[i] = value;
         }
         return *this;
     }
@@ -451,7 +451,7 @@ public:
         Mat<T, Row, Col> result;
         for (size_t i = 0; i < Row * Col; ++i)
         {
-            result[i] = -_data[i];
+            result[i] = -m_data[i];
         }
         return result;
     }
@@ -462,7 +462,7 @@ public:
     {
         for (size_t i = 0; i < Row * Col; ++i)
         {
-            _data[i] += other._data[i];
+            m_data[i] += other.m_data[i];
         }
         return *this;
     }
@@ -471,7 +471,7 @@ public:
     {
         for (size_t i = 0; i < Row * Col; ++i)
         {
-            _data[i] += value;
+            m_data[i] += value;
         }
         return *this;
     }
@@ -480,7 +480,7 @@ public:
     {
         for (size_t i = 0; i < Row * Col; ++i)
         {
-            _data[i] -= other._data[i];
+            m_data[i] -= other.m_data[i];
         }
         return *this;
     }
@@ -489,7 +489,7 @@ public:
     {
         for (size_t i = 0; i < Row * Col; ++i)
         {
-            _data[i] -= value;
+            m_data[i] -= value;
         }
         return *this;
     }
@@ -521,16 +521,16 @@ public:
     {
         for (size_t i = 0; i < Row * Col; ++i)
         {
-            _data[i] = static_cast<T>(_data[i] * scalar);
+            m_data[i] = static_cast<T>(m_data[i] * scalar);
         }
         return *this;
     }
 
     // 迭代器支持
-    auto begin() noexcept { return _data.begin(); }
-    auto end() noexcept { return _data.end(); }
-    auto begin() const noexcept { return _data.begin(); }
-    auto end() const noexcept { return _data.end(); }
+    auto begin() noexcept { return m_data.begin(); }
+    auto end() noexcept { return m_data.end(); }
+    auto begin() const noexcept { return m_data.begin(); }
+    auto end() const noexcept { return m_data.end(); }
 
     // 比较操作符 (C++20)
     auto operator<=>(const Mat &other) const = default;
@@ -566,7 +566,7 @@ public:
     constexpr void SetViewMatrix(const Vec<T, 2> &pos, T rotation_radians, T zoom)
         requires(Row == 4 && Col == 4)
     {
-        this->_data.fill(0);
+        this->m_data.fill(0);
 
         T cos_r = std::cos(rotation_radians);
         T sin_r = std::sin(rotation_radians);
@@ -587,7 +587,7 @@ public:
     constexpr void SetProjectionMatrix(T fov_radians, T aspect, T near, T far)
         requires(Row == 4 && Col == 4)
     {
-        this->_data.fill(0);
+        this->m_data.fill(0);
 
         T tanHalfFov = std::tan(fov_radians / static_cast<T>(2));
 
@@ -601,7 +601,7 @@ public:
     constexpr void SetProjectionMatrix(T left, T right, T bottom, T top, T near, T far)
         requires(Row == 4 && Col == 4)
     {
-        this->_data.fill(0);
+        this->m_data.fill(0);
 
         (*this)[0, 0] = static_cast<T>(2) / (right - left);
         (*this)[1, 1] = static_cast<T>(2) / (top - bottom);

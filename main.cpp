@@ -4,9 +4,9 @@ using namespace std;
 
 int main()
 {
-
-    Vec4f v(1.22, 2, 3.2, 1);
-    v*Mat4f::MakeIdentity();
-    cout << sizeof(v) << v.SizeInBytes() << endl;
+    Vec4f v{1.0f, 2.0f, 3.0f, 4.0f};
+    Mat4f m;
+    cout << m*v;
+    
     return 0;
 }
