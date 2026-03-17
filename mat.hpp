@@ -985,7 +985,7 @@ public:
     template <Detail::NumericMat U>
     constexpr MatView& operator=(const std::initializer_list<U> &ilist)
     {
-        if (ilist.Size() != RowRange::Size() * ColRange::Size())
+        if (ilist.size() != RowRange::Size() * ColRange::Size())
         {
             throw std::runtime_error("Size mismatch");
         }
@@ -1084,7 +1084,7 @@ public:
 template <Detail::NumericMat T, size_t Row, size_t Col, typename RowRange, typename ColRange>
 std::ostream &operator<<(std::ostream &os, const MatView<T, Row, Col, RowRange, ColRange> &mat_view)
 {
-    os << Mat<T, Row, Col>(mat_view);
+    os << Mat<T, RowRange::Size(), ColRange::Size()>(mat_view);
     return os;
 }
 
