@@ -85,7 +85,7 @@ public:
     constexpr Vec(const std::list<U> &list)
         requires std::convertible_to<U, T>
     {
-        if (list.Size() != N)
+        if (list.size() != N)
         {
             throw std::runtime_error("List Size does not match vector dimension");
         }
@@ -96,7 +96,7 @@ public:
     constexpr Vec(const std::vector<U> &vector)
         requires std::convertible_to<U, T>
     {
-        if (vector.Size() != N)
+        if (vector.size() != N)
         {
             throw std::runtime_error("Vector Size does not match vector dimension");
         }
@@ -265,12 +265,12 @@ public:
         if constexpr (std::same_as<LType, Vec<T, N>>)
         {
             for (size_t i = 0; i < N; ++i)
-                result.m_data[i] = static_cast<ResultType>(lhs._data[i]) + static_cast<ResultType>(rhs);
+                result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) + static_cast<ResultType>(rhs);
         }
         else
         {
             for (size_t i = 0; i < N; ++i)
-                result.m_data[i] = static_cast<ResultType>(lhs) + static_cast<ResultType>(rhs._data[i]);
+                result.m_data[i] = static_cast<ResultType>(lhs) + static_cast<ResultType>(rhs.m_data[i]);
         }
         return result;
     }
@@ -337,12 +337,12 @@ public:
         if constexpr (std::same_as<LType, Vec<T, N>>)
         {
             for (size_t i = 0; i < N; ++i)
-                result.m_data[i] = static_cast<ResultType>(lhs._data[i]) * static_cast<ResultType>(rhs);
+                result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) * static_cast<ResultType>(rhs);
         }
         else
         {
             for (size_t i = 0; i < N; ++i)
-                result.m_data[i] = static_cast<ResultType>(lhs) * static_cast<ResultType>(rhs._data[i]);
+                result.m_data[i] = static_cast<ResultType>(lhs) * static_cast<ResultType>(rhs.m_data[i]);
         }
         return result;
     }
@@ -781,7 +781,7 @@ public:
         requires(Range<start, end, step>::Size() == M)
     constexpr VecView &operator=(const Vec<U, M> &other)
     {
-        for (size_t i = 0; i < Range<start, end, step>::Size; ++i)
+        for (size_t i = 0; i < Range<start, end, step>::Size(); ++i)
         {
             _original_vec[_ref_index[i]] = static_cast<T>(other[i]);
         }
@@ -791,7 +791,7 @@ public:
     template <Detail::NumericVec U>
     constexpr VecView &operator=(const std::initializer_list<U> &list)
     {
-        if (list.Size() != Range<start, end, step>::Size())
+        if (list.size() != Range<start, end, step>::Size())
         {
             throw std::runtime_error("Initializer list Size mismatch in VecView assignment");
         }
@@ -826,7 +826,7 @@ public:
     template <Detail::NumericVec U>
     constexpr VecView &operator=(const std::list<U> &other)
     {
-        if (other.Size() != Range<start, end, step>::Size())
+        if (other.size() != Range<start, end, step>::Size())
         {
             throw std::runtime_error("List Size mismatch in VecView assignment");
         }
@@ -841,7 +841,7 @@ public:
     template <Detail::NumericVec U>
     constexpr VecView &operator=(const std::vector<U> &other)
     {
-        if (other.Size() != Range<start, end, step>::Size())
+        if (other.size() != Range<start, end, step>::Size())
         {
             throw std::runtime_error("Vector Size mismatch in VecView assignment");
         }

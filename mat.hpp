@@ -70,7 +70,7 @@ public:
     template <Detail::NumericMat U>
     constexpr Mat(const std::initializer_list<U> &list)
     {
-        if (list.Size() != Row * Col)
+        if (list.size() != Row * Col)
         {
             throw std::runtime_error("Size mismatch");
         }
@@ -83,7 +83,7 @@ public:
 
     constexpr Mat(const std::initializer_list<Detail::RowData<T, Col>> &list)
     {
-        if (list.Size() != Row)
+        if (list.size() != Row)
         {
             throw std::runtime_error("Row count mismatch");
         }
@@ -138,7 +138,7 @@ public:
     constexpr Mat(const std::list<U> &list)
         requires std::convertible_to<U, T>
     {
-        if (list.Size() != Row * Col)
+        if (list.size() != Row * Col)
         {
             throw std::runtime_error("Size mismatch");
         }
@@ -150,7 +150,7 @@ public:
     constexpr Mat(const std::vector<U> &vec)
         requires std::convertible_to<U, T>
     {
-        if (vec.Size() != Row * Col)
+        if (vec.size() != Row * Col)
         {
             throw std::runtime_error("Size mismatch");
         }
@@ -188,7 +188,12 @@ public:
     template <Detail::NumericMat U>
     constexpr operator std::array<U, Row *Col>() const
     {
-        return std::array<U, Row * Col>(m_data.begin(), m_data.end());
+        std::array<U, Row * Col> result{};
+        for (size_t i = 0; i < Row * Col; ++i)
+        {
+            result[i] = static_cast<U>(m_data[i]);
+        }
+        return result;
     }
 
     template <Detail::NumericMat U>
@@ -204,7 +209,7 @@ public:
     }
 
     template <Detail::NumericMat U>
-    constexpr operator std::span<U, Row *Col>() const
+    constexpr operator std::span<U, Row *Col>() 
     {
         return std::span<U, Row * Col>(m_data.begin(), m_data.end());
     }
@@ -983,7 +988,7 @@ public:
     }
 
     template <Detail::NumericMat U>
-    constexpr MatView& operator=(const std::initializer_list<U> &ilist)
+    constexpr MatView &operator=(const std::initializer_list<U> &ilist)
     {
         if (ilist.size() != RowRange::Size() * ColRange::Size())
         {
@@ -1051,7 +1056,7 @@ public:
     }
 
     template <Detail::NumericMat U>
-    constexpr MatView& operator=(const std::span<U, RowRange::Size() * ColRange::Size()> &span)
+    constexpr MatView &operator=(const std::span<U, RowRange::Size() * ColRange::Size()> &span)
     {
         size_t index = 0;
         for (size_t r = 0; r < RowRange::Size(); ++r)
