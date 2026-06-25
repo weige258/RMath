@@ -237,28 +237,7 @@ constexpr double Radian(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
 template <Detail::NumericVec T, Detail::NumericVec U, std::size_t N>
 constexpr double Degree(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
 {
-
-    double dot = 0.0;
-    for (size_t i = 0; i < N; ++i) {
-        dot += static_cast<double>(lhs[i]) * static_cast<double>(rhs[i]);
-    }
-
-    double len_lhs_sq = 0.0;
-    double len_rhs_sq = 0.0;
-    for (size_t i = 0; i < N; ++i) {
-        len_lhs_sq += static_cast<double>(lhs[i]) * static_cast<double>(lhs[i]);
-        len_rhs_sq += static_cast<double>(rhs[i]) * static_cast<double>(rhs[i]);
-    }
-    double len_product = std::sqrt(len_lhs_sq) * std::sqrt(len_rhs_sq);
-
-    if (len_product < 1e-9)
-        return 0.0;
-
-    double cos_theta = dot / len_product;
-    if (cos_theta > 1.0) cos_theta = 1.0;
-    if (cos_theta < -1.0) cos_theta = -1.0;
-
-    return std::acos(cos_theta) * (180.0 / std::numbers::pi);
+    return Radian(lhs, rhs) * (180.0 / std::numbers::pi);
 }
 
 // ===================== Mat 计算函数 =====================

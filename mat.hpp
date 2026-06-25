@@ -180,7 +180,7 @@ public:
         std::copy(vec.begin(), vec.end(), m_data.begin());
     }
 
-    constexpr Mat(const std::span<T, Row * Col> &span)
+    constexpr Mat(const std::span<const T, Row * Col> &span)
     {
         std::copy(span.begin(), span.end(), m_data.begin());
     }
@@ -225,6 +225,12 @@ public:
     constexpr operator std::span<U, Row *Col>() 
     {
         return std::span<U, Row * Col>(m_data.begin(), m_data.end());
+    }
+
+    template <Detail::NumericMat U>
+    constexpr operator std::span<const U, Row *Col>() const
+    {
+        return std::span<const U, Row * Col>(m_data.begin(), m_data.end());
     }
 
     // 指针转换

@@ -405,7 +405,7 @@ public:
         return result;
     }
 
-    constexpr Vec operator-()
+    constexpr Vec operator-() const
     {
         Vec result{};
         if constexpr (Detail::VecUseSIMD<T, N>)
