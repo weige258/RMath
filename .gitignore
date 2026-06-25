@@ -1,4 +1,4 @@
 .gitignore
 .vscode/
-main.exe
-main.cpp
+test.exe
+test.cpp

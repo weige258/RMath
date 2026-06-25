@@ -1,5 +1,4 @@
-#ifndef RANGE_HPP
-#define RANGE_HPP
+#pragma once
 
 #include <concepts>
 #include <iterator>
@@ -92,7 +91,7 @@ struct Range final
     }
 
     // 转换为list（改用类成员）
-    constexpr operator std::list<int>() const {
+    operator std::list<int>() const {
         std::list<int> result;
         for (int val : *this) {
             result.push_back(val);
@@ -107,5 +106,3 @@ struct Range final
         }(std::make_index_sequence<Size()>{});
     }   
 };
-
-#endif

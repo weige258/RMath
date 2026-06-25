@@ -1,3 +1,5 @@
+#pragma once
+
 #include <array>
 #include <list>
 #include <vector>
@@ -5,11 +7,10 @@
 #include <concepts>
 #include <iostream>
 #include <cmath>
+#include <cassert>
 #include <numbers>
 #include "range.hpp"
-
-#ifndef VEC_HPP
-#define VEC_HPP
+#include "simd_utils.hpp"
 
 namespace Detail
 {
@@ -25,9 +26,17 @@ namespace Detail
 
         consteval ComplieTimeIndexCheckVec(std::size_t i) : value(i)
         {
-            static_assert(i >= Limit, "Vec index out of bounds!");
+            static_assert(i < Limit, "Vec index out of bounds!");
         }
     };
+
+    // SIMD 辅助：判断两个类型是否都支持 SIMD 且结果类型也支持
+    template <typename T, typename U>
+    inline constexpr bool CanUseSIMD = simd::SupportsSIMD<T> && simd::SupportsSIMD<U> &&
+                                         simd::SupportsSIMD<std::common_type_t<T, U>>;
+
+    template <typename T, std::size_t N>
+    inline constexpr bool VecUseSIMD = simd::SupportsSIMD<T> && (N >= simd::SIMDWidth<T>);
 }
 
 // 视图声明
@@ -47,6 +56,24 @@ public:
     template <Detail::NumericVec U, std::size_t M>
     friend struct Vec;
 
+    // 标量混合运算符的友元声明
+    template <Detail::NumericVec U, std::size_t M, Detail::NumericVec V>
+    friend constexpr auto operator+(const Vec<U, M> &lhs, V rhs);
+    template <Detail::NumericVec U, std::size_t M, Detail::NumericVec V>
+    friend constexpr auto operator+(V lhs, const Vec<U, M> &rhs);
+    template <Detail::NumericVec U, std::size_t M, Detail::NumericVec V>
+    friend constexpr auto operator-(const Vec<U, M> &lhs, V rhs);
+    template <Detail::NumericVec U, std::size_t M, Detail::NumericVec V>
+    friend constexpr auto operator-(V lhs, const Vec<U, M> &rhs);
+    template <Detail::NumericVec U, std::size_t M, Detail::NumericVec V>
+    friend constexpr auto operator*(const Vec<U, M> &lhs, V rhs);
+    template <Detail::NumericVec U, std::size_t M, Detail::NumericVec V>
+    friend constexpr auto operator*(V lhs, const Vec<U, M> &rhs);
+    template <Detail::NumericVec U, std::size_t M, Detail::NumericVec V>
+    friend constexpr auto operator/(const Vec<U, M> &lhs, V rhs);
+    template <Detail::NumericVec U, std::size_t M, Detail::NumericVec V>
+    friend constexpr auto operator/(V lhs, const Vec<U, M> &rhs);
+
 public:
     // 构造
     constexpr Vec() { m_data.fill(0); }
@@ -55,7 +82,7 @@ public:
 
     constexpr Vec(const Vec &other) = default;
 
-    constexpr Vec(Vec &&other) = default;
+    constexpr Vec(Vec &&other) noexcept = default;
 
     constexpr Vec(std::initializer_list<T> list)
     {
@@ -165,17 +192,19 @@ public:
     }
 
     // 指针转换
-    explicit operator T *() { return m_data._data(); }
-    explicit operator const T *() const { return m_data._data(); }
+    explicit operator T *() { return m_data.data(); }
+    explicit operator const T *() const { return m_data.data(); }
 
     // 访问
     constexpr T &operator[](std::size_t index)
     {
+        assert(index < N);
         return m_data[index];
     }
 
     constexpr const T &operator[](std::size_t index) const
     {
+        assert(index < N);
         return m_data[index];
     }
 
@@ -227,13 +256,30 @@ public:
     // 赋值
     constexpr Vec &operator=(const Vec &other) = default;
 
-    constexpr Vec &operator=(Vec &&other) = default;
+    constexpr Vec &operator=(Vec &&other) noexcept = default;
 
     constexpr Vec &operator=(const T &value)
     {
-        for (size_t i = 0; i < N; ++i)
+        if constexpr (Detail::VecUseSIMD<T, N>)
         {
-            m_data[i] = value;
+            auto v = simd::set1<T>(value);
+            constexpr std::size_t W = simd::SIMDWidth<T>;
+            std::size_t i = 0;
+            for (; i + W <= N; i += W)
+            {
+                simd::storeu<T>(&m_data[i], v);
+            }
+            for (; i < N; ++i)
+            {
+                m_data[i] = value;
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < N; ++i)
+            {
+                m_data[i] = value;
+            }
         }
         return *this;
     }
@@ -244,33 +290,27 @@ public:
     {
         using ResultType = std::common_type_t<T, U>;
         Vec<ResultType, N> result;
-        for (size_t i = 0; i < N; ++i)
+        if constexpr (Detail::CanUseSIMD<T, U> && Detail::VecUseSIMD<ResultType, N>)
         {
-            result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) + static_cast<ResultType>(rhs.m_data[i]);
-        }
-        return result;
-    }
-
-    template <typename LType, typename RType>
-        requires(
-            (std::same_as<LType, Vec<T, N>> && Detail::NumericVec<RType>) ||
-            (Detail::NumericVec<LType> && std::same_as<RType, Vec<T, N>>))
-    constexpr friend auto operator+(const LType &lhs, const RType &rhs)
-    {
-        using ScalarType = std::conditional_t<Detail::NumericVec<LType>, LType, RType>;
-        using ResultType = std::common_type_t<T, ScalarType>;
-
-        Vec<ResultType, N> result;
-
-        if constexpr (std::same_as<LType, Vec<T, N>>)
-        {
-            for (size_t i = 0; i < N; ++i)
-                result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) + static_cast<ResultType>(rhs);
+            constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+            std::size_t i = 0;
+            for (; i + W <= N; i += W)
+            {
+                auto a = simd::loadu<ResultType>(&lhs.m_data[i]);
+                auto b = simd::loadu<ResultType>(&rhs.m_data[i]);
+                simd::storeu<ResultType>(&result.m_data[i], simd::add<ResultType>(a, b));
+            }
+            for (; i < N; ++i)
+            {
+                result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) + static_cast<ResultType>(rhs.m_data[i]);
+            }
         }
         else
         {
             for (size_t i = 0; i < N; ++i)
-                result.m_data[i] = static_cast<ResultType>(lhs) + static_cast<ResultType>(rhs.m_data[i]);
+            {
+                result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) + static_cast<ResultType>(rhs.m_data[i]);
+            }
         }
         return result;
     }
@@ -280,33 +320,27 @@ public:
     {
         using ResultType = std::common_type_t<T, U>;
         Vec<ResultType, N> result;
-        for (size_t i = 0; i < N; ++i)
+        if constexpr (Detail::CanUseSIMD<T, U> && Detail::VecUseSIMD<ResultType, N>)
         {
-            result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) - static_cast<ResultType>(rhs.m_data[i]);
-        }
-        return result;
-    }
-
-    template <typename LType, typename RType>
-        requires(
-            (std::same_as<LType, Vec<T, N>> && Detail::NumericVec<RType>) ||
-            (Detail::NumericVec<LType> && std::same_as<RType, Vec<T, N>>))
-    constexpr friend auto operator-(const LType &lhs, const RType &rhs)
-    {
-        using ScalarType = std::conditional_t<Detail::NumericVec<LType>, LType, RType>;
-        using ResultType = std::common_type_t<T, ScalarType>;
-
-        Vec<ResultType, N> result;
-
-        if constexpr (std::same_as<LType, Vec<T, N>>)
-        {
-            for (size_t i = 0; i < N; ++i)
-                result.m_data[i] = static_cast<ResultType>(lhs._data[i]) - static_cast<ResultType>(rhs);
+            constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+            std::size_t i = 0;
+            for (; i + W <= N; i += W)
+            {
+                auto a = simd::loadu<ResultType>(&lhs.m_data[i]);
+                auto b = simd::loadu<ResultType>(&rhs.m_data[i]);
+                simd::storeu<ResultType>(&result.m_data[i], simd::sub<ResultType>(a, b));
+            }
+            for (; i < N; ++i)
+            {
+                result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) - static_cast<ResultType>(rhs.m_data[i]);
+            }
         }
         else
         {
             for (size_t i = 0; i < N; ++i)
-                result.m_data[i] = static_cast<ResultType>(lhs) - static_cast<ResultType>(rhs._data[i]);
+            {
+                result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) - static_cast<ResultType>(rhs.m_data[i]);
+            }
         }
         return result;
     }
@@ -316,33 +350,27 @@ public:
     {
         using ResultType = std::common_type_t<T, U>;
         Vec<ResultType, N> result;
-        for (size_t i = 0; i < N; ++i)
+        if constexpr (Detail::CanUseSIMD<T, U> && Detail::VecUseSIMD<ResultType, N>)
         {
-            result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) * static_cast<ResultType>(rhs.m_data[i]);
-        }
-        return result;
-    }
-
-    template <typename LType, typename RType>
-        requires(
-            (std::same_as<LType, Vec<T, N>> && Detail::NumericVec<RType>) ||
-            (Detail::NumericVec<LType> && std::same_as<RType, Vec<T, N>>))
-    constexpr friend auto operator*(const LType &lhs, const RType &rhs)
-    {
-        using ScalarType = std::conditional_t<Detail::NumericVec<LType>, LType, RType>;
-        using ResultType = std::common_type_t<T, ScalarType>;
-
-        Vec<ResultType, N> result;
-
-        if constexpr (std::same_as<LType, Vec<T, N>>)
-        {
-            for (size_t i = 0; i < N; ++i)
-                result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) * static_cast<ResultType>(rhs);
+            constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+            std::size_t i = 0;
+            for (; i + W <= N; i += W)
+            {
+                auto a = simd::loadu<ResultType>(&lhs.m_data[i]);
+                auto b = simd::loadu<ResultType>(&rhs.m_data[i]);
+                simd::storeu<ResultType>(&result.m_data[i], simd::mul<ResultType>(a, b));
+            }
+            for (; i < N; ++i)
+            {
+                result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) * static_cast<ResultType>(rhs.m_data[i]);
+            }
         }
         else
         {
             for (size_t i = 0; i < N; ++i)
-                result.m_data[i] = static_cast<ResultType>(lhs) * static_cast<ResultType>(rhs.m_data[i]);
+            {
+                result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) * static_cast<ResultType>(rhs.m_data[i]);
+            }
         }
         return result;
     }
@@ -352,33 +380,27 @@ public:
     {
         using ResultType = std::common_type_t<T, U>;
         Vec<ResultType, N> result;
-        for (size_t i = 0; i < N; ++i)
+        if constexpr (Detail::CanUseSIMD<T, U> && Detail::VecUseSIMD<ResultType, N> && !std::is_integral_v<ResultType>)
         {
-            result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) / static_cast<ResultType>(rhs.m_data[i]);
-        }
-        return result;
-    }
-
-    template <typename LType, typename RType>
-        requires(
-            (std::same_as<LType, Vec<T, N>> && Detail::NumericVec<RType>) ||
-            (Detail::NumericVec<LType> && std::same_as<RType, Vec<T, N>>))
-    constexpr friend auto operator/(const LType &lhs, const RType &rhs)
-    {
-        using ScalarType = std::conditional_t<Detail::NumericVec<LType>, LType, RType>;
-        using ResultType = std::common_type_t<T, ScalarType>;
-
-        Vec<ResultType, N> result;
-
-        if constexpr (std::same_as<LType, Vec<T, N>>)
-        {
-            for (size_t i = 0; i < N; ++i)
-                result.m_data[i] = static_cast<ResultType>(lhs._data[i]) / static_cast<ResultType>(rhs);
+            constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+            std::size_t i = 0;
+            for (; i + W <= N; i += W)
+            {
+                auto a = simd::loadu<ResultType>(&lhs.m_data[i]);
+                auto b = simd::loadu<ResultType>(&rhs.m_data[i]);
+                simd::storeu<ResultType>(&result.m_data[i], simd::div<ResultType>(a, b));
+            }
+            for (; i < N; ++i)
+            {
+                result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) / static_cast<ResultType>(rhs.m_data[i]);
+            }
         }
         else
         {
             for (size_t i = 0; i < N; ++i)
-                result.m_data[i] = static_cast<ResultType>(lhs) / static_cast<ResultType>(rhs._data[i]);
+            {
+                result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) / static_cast<ResultType>(rhs.m_data[i]);
+            }
         }
         return result;
     }
@@ -386,9 +408,27 @@ public:
     constexpr Vec operator-()
     {
         Vec result{};
-        for (size_t i = 0; i < N; ++i)
+        if constexpr (Detail::VecUseSIMD<T, N>)
         {
-            result[i] = -m_data[i];
+            constexpr std::size_t W = simd::SIMDWidth<T>;
+            auto z = simd::zero<T>();
+            std::size_t i = 0;
+            for (; i + W <= N; i += W)
+            {
+                auto a = simd::loadu<T>(&m_data[i]);
+                simd::storeu<T>(&result.m_data[i], simd::sub<T>(z, a));
+            }
+            for (; i < N; ++i)
+            {
+                result[i] = -m_data[i];
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < N; ++i)
+            {
+                result[i] = -m_data[i];
+            }
         }
         return result;
     }
@@ -396,72 +436,216 @@ public:
     // 复合赋值操作符
     constexpr Vec &operator+=(const Vec &other)
     {
-        for (size_t i = 0; i < N; ++i)
+        if constexpr (Detail::VecUseSIMD<T, N>)
         {
-            m_data[i] += other.m_data[i];
+            constexpr std::size_t W = simd::SIMDWidth<T>;
+            std::size_t i = 0;
+            for (; i + W <= N; i += W)
+            {
+                auto a = simd::loadu<T>(&m_data[i]);
+                auto b = simd::loadu<T>(&other.m_data[i]);
+                simd::storeu<T>(&m_data[i], simd::add<T>(a, b));
+            }
+            for (; i < N; ++i)
+            {
+                m_data[i] += other.m_data[i];
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < N; ++i)
+            {
+                m_data[i] += other.m_data[i];
+            }
         }
         return *this;
     }
 
     constexpr Vec &operator+=(const T &value)
     {
-        for (size_t i = 0; i < N; ++i)
+        if constexpr (Detail::VecUseSIMD<T, N>)
         {
-            m_data[i] += value;
+            constexpr std::size_t W = simd::SIMDWidth<T>;
+            auto sv = simd::set1<T>(value);
+            std::size_t i = 0;
+            for (; i + W <= N; i += W)
+            {
+                auto a = simd::loadu<T>(&m_data[i]);
+                simd::storeu<T>(&m_data[i], simd::add<T>(a, sv));
+            }
+            for (; i < N; ++i)
+            {
+                m_data[i] += value;
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < N; ++i)
+            {
+                m_data[i] += value;
+            }
         }
         return *this;
     }
 
     constexpr Vec &operator-=(const Vec &other)
     {
-        for (size_t i = 0; i < N; ++i)
+        if constexpr (Detail::VecUseSIMD<T, N>)
         {
-            m_data[i] -= other.m_data[i];
+            constexpr std::size_t W = simd::SIMDWidth<T>;
+            std::size_t i = 0;
+            for (; i + W <= N; i += W)
+            {
+                auto a = simd::loadu<T>(&m_data[i]);
+                auto b = simd::loadu<T>(&other.m_data[i]);
+                simd::storeu<T>(&m_data[i], simd::sub<T>(a, b));
+            }
+            for (; i < N; ++i)
+            {
+                m_data[i] -= other.m_data[i];
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < N; ++i)
+            {
+                m_data[i] -= other.m_data[i];
+            }
         }
         return *this;
     }
 
     constexpr Vec &operator-=(const T &value)
     {
-        for (size_t i = 0; i < N; ++i)
+        if constexpr (Detail::VecUseSIMD<T, N>)
         {
-            m_data[i] -= value;
+            constexpr std::size_t W = simd::SIMDWidth<T>;
+            auto sv = simd::set1<T>(value);
+            std::size_t i = 0;
+            for (; i + W <= N; i += W)
+            {
+                auto a = simd::loadu<T>(&m_data[i]);
+                simd::storeu<T>(&m_data[i], simd::sub<T>(a, sv));
+            }
+            for (; i < N; ++i)
+            {
+                m_data[i] -= value;
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < N; ++i)
+            {
+                m_data[i] -= value;
+            }
         }
         return *this;
     }
 
     constexpr Vec &operator*=(const Vec &other)
     {
-        for (size_t i = 0; i < N; ++i)
+        if constexpr (Detail::VecUseSIMD<T, N>)
         {
-            m_data[i] *= other.m_data[i];
+            constexpr std::size_t W = simd::SIMDWidth<T>;
+            std::size_t i = 0;
+            for (; i + W <= N; i += W)
+            {
+                auto a = simd::loadu<T>(&m_data[i]);
+                auto b = simd::loadu<T>(&other.m_data[i]);
+                simd::storeu<T>(&m_data[i], simd::mul<T>(a, b));
+            }
+            for (; i < N; ++i)
+            {
+                m_data[i] *= other.m_data[i];
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < N; ++i)
+            {
+                m_data[i] *= other.m_data[i];
+            }
         }
         return *this;
     }
 
     constexpr Vec &operator*=(const T &value)
     {
-        for (size_t i = 0; i < N; ++i)
+        if constexpr (Detail::VecUseSIMD<T, N>)
         {
-            m_data[i] *= value;
+            constexpr std::size_t W = simd::SIMDWidth<T>;
+            auto sv = simd::set1<T>(value);
+            std::size_t i = 0;
+            for (; i + W <= N; i += W)
+            {
+                auto a = simd::loadu<T>(&m_data[i]);
+                simd::storeu<T>(&m_data[i], simd::mul<T>(a, sv));
+            }
+            for (; i < N; ++i)
+            {
+                m_data[i] *= value;
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < N; ++i)
+            {
+                m_data[i] *= value;
+            }
         }
         return *this;
     }
 
     constexpr Vec &operator/=(const Vec &other)
     {
-        for (size_t i = 0; i < N; ++i)
+        if constexpr (Detail::VecUseSIMD<T, N> && !std::is_integral_v<T>)
         {
-            m_data[i] /= other.m_data[i];
+            constexpr std::size_t W = simd::SIMDWidth<T>;
+            std::size_t i = 0;
+            for (; i + W <= N; i += W)
+            {
+                auto a = simd::loadu<T>(&m_data[i]);
+                auto b = simd::loadu<T>(&other.m_data[i]);
+                simd::storeu<T>(&m_data[i], simd::div<T>(a, b));
+            }
+            for (; i < N; ++i)
+            {
+                m_data[i] /= other.m_data[i];
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < N; ++i)
+            {
+                m_data[i] /= other.m_data[i];
+            }
         }
         return *this;
     }
 
     constexpr Vec &operator/=(const T &value)
     {
-        for (size_t i = 0; i < N; ++i)
+        if constexpr (Detail::VecUseSIMD<T, N> && !std::is_integral_v<T>)
         {
-            m_data[i] /= value;
+            constexpr std::size_t W = simd::SIMDWidth<T>;
+            auto sv = simd::set1<T>(value);
+            std::size_t i = 0;
+            for (; i + W <= N; i += W)
+            {
+                auto a = simd::loadu<T>(&m_data[i]);
+                simd::storeu<T>(&m_data[i], simd::div<T>(a, sv));
+            }
+            for (; i < N; ++i)
+            {
+                m_data[i] /= value;
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < N; ++i)
+            {
+                m_data[i] /= value;
+            }
         }
         return *this;
     }
@@ -497,248 +681,7 @@ public:
     static const std::type_info &ValueType() noexcept { return typeid(T); }
 };
 
-// 模长
-template <Detail::NumericVec T, std::size_t N>
-T Length(const Vec<T, N> &v)
-{
-    T sum = 0;
-    for (size_t i = 0; i < N; ++i)
-    {
-        sum += v[i] * v[i];
-    }
-    return sqrt(sum);
-}
-
-// 归一化
-template <Detail::NumericVec T, std::size_t N>
-Vec<T, N> Normalize(const Vec<T, N> &v)
-{
-    T len = Length(v);
-    if (len > 0)
-    {
-        return (v) / len;
-    }
-    return Vec<T, N>{};
-}
-
-// 点积
-template <typename... Vecs>
-    requires(sizeof...(Vecs) >= 2)
-auto Dot(const Vecs &...vecs)
-{
-    constexpr std::size_t N = (std::tuple_element_t<0, std::tuple<Vecs...>>::Size());
-    static_assert(((vecs.Size() == N) && ...), "All vectors must have the same dimension N");
-    using ResultType = std::common_type_t<typename Vecs::vec_type_alias...>;
-    ResultType total_sum = 0;
-    for (std::size_t i = 0; i < N; ++i)
-    {
-        total_sum += (static_cast<ResultType>(vecs[i]) * ...);
-    }
-
-    return total_sum;
-}
-
-// 叉积
-template <Detail::NumericVec T, Detail::NumericVec U, std::size_t N>
-constexpr auto Cross(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
-    requires(N == 2 || N == 3 || N == 7)
-{
-    using ResultType = std::common_type_t<T, U>;
-
-    if constexpr (N == 2) {
-        return static_cast<ResultType>(lhs[0]) * rhs[1] - static_cast<ResultType>(lhs[1]) * rhs[0];
-    }
-    else if constexpr (N == 3) {
-        return Vec<ResultType, 3>{
-            static_cast<ResultType>(lhs[1]) * rhs[2] - static_cast<ResultType>(lhs[2]) * rhs[1],
-            static_cast<ResultType>(lhs[2]) * rhs[0] - static_cast<ResultType>(lhs[0]) * rhs[2],
-            static_cast<ResultType>(lhs[0]) * rhs[1] - static_cast<ResultType>(lhs[1]) * rhs[0]
-        };
-    }
-    else if constexpr (N == 7) {
-        Vec<ResultType, 7> res;
-        res[0] = lhs[1]*rhs[3] - lhs[3]*rhs[1] + lhs[2]*rhs[6] - lhs[6]*rhs[2] + lhs[4]*rhs[5] - lhs[5]*rhs[4];
-        res[1] = lhs[2]*rhs[4] - lhs[4]*rhs[2] + lhs[3]*rhs[0] - lhs[0]*rhs[3] + lhs[5]*rhs[6] - lhs[6]*rhs[5];
-        res[2] = lhs[3]*rhs[5] - lhs[5]*rhs[3] + lhs[4]*rhs[1] - lhs[1]*rhs[4] + lhs[6]*rhs[0] - lhs[0]*rhs[6];
-        res[3] = lhs[4]*rhs[6] - lhs[6]*rhs[4] + lhs[5]*rhs[2] - lhs[2]*rhs[5] + lhs[0]*rhs[1] - lhs[1]*rhs[0];
-        res[4] = lhs[5]*rhs[0] - lhs[0]*rhs[5] + lhs[6]*rhs[3] - lhs[3]*rhs[6] + lhs[1]*rhs[2] - lhs[2]*rhs[1];
-        res[5] = lhs[6]*rhs[1] - lhs[1]*rhs[6] + lhs[0]*rhs[4] - lhs[4]*rhs[0] + lhs[2]*rhs[3] - lhs[3]*rhs[2];
-        res[6] = lhs[0]*rhs[2] - lhs[2]*rhs[0] + lhs[1]*rhs[5] - lhs[5]*rhs[1] + lhs[3]*rhs[4] - lhs[4]*rhs[3];
-        return res;
-    }
-}
-
-// 向量 Hadamard 积 (按元素相乘)
-template <typename... Args>
-    requires(sizeof...(Args) >= 2) &&
-            (... && requires { typename std::remove_cvref_t<Args>::vec_type_alias; })
-constexpr auto Hadamard(const Args &...args)
-{
-
-    using FirstArg = std::tuple_element_t<0, std::tuple<Args...>>;
-    constexpr size_t N = std::remove_cvref_t<FirstArg>::Size();
-
-    static_assert((... && (Args::Size() == N)),
-                  "All vectors must have the same dimension for Hadamard product.");
-
-    using ResultScalar = std::common_type_t<typename std::remove_cvref_t<Args>::vec_type_alias...>;
-
-    Vec<ResultScalar, N> result;
-
-    for (size_t i = 0; i < N; ++i)
-    {
-        result[i] = (static_cast<ResultScalar>(args[i]) * ...);
-    }
-
-    return result;
-}
-
-// 拼接
-template <typename... Vecs>
-    requires(sizeof...(Vecs) >= 1)
-auto Cat(const Vecs &...vecs)
-{
-    constexpr std::size_t TotalN = (Vecs::Size() + ...);
-    using ResultT = std::common_type_t<typename Vecs::vec_type_alias...>;
-    Vec<ResultT, TotalN> result;
-    std::size_t offset = 0;
-    ([&](const auto &v)
-     {
-        for (std::size_t i = 0; i < v.Size(); ++i) {
-            result[offset++] = static_cast<ResultT>(v[i]);
-        } }(vecs), ...);
-
-    return result;
-}
-
-// 计算距离
-template <Detail::NumericVec T, Detail::NumericVec U, std::size_t N>
-auto Distance(const Vec<T, N> &a, const Vec<U, N> &b)
-{
-    using CalcT = std::common_type_t<T, U>;
-    Vec<CalcT, N> diff;
-    for (size_t i = 0; i < N; ++i)
-    {
-        diff[i] = static_cast<CalcT>(a[i]) - static_cast<CalcT>(b[i]);
-    }
-
-    return std::sqrt(Dot(diff, diff));
-}
-
-// 线性插值
-template <Detail::NumericVec T, Detail::NumericVec U, std::size_t N, typename V>
-auto Lerp(const Vec<T, N> &a, const Vec<U, N> &b, V t)
-{
-    using ResultT = std::common_type_t<T, U, V>;
-    return Vec<ResultT, N>(a) * (static_cast<ResultT>(1.0) - static_cast<ResultT>(t)) + Vec<ResultT, N>(b) * static_cast<ResultT>(t);
-}
-
-// 投影 Project
-template <Detail::NumericVec T, Detail::NumericVec U, std::size_t N>
-auto Project(const Vec<T, N> &a, const Vec<U, N> &b)
-{
-    using ResultT = std::common_type_t<T, U>;
-    auto dot_val = Dot(a, b);
-    auto b_mag_sq = Dot(b, b);
-    return Vec<ResultT, N>(b) * (static_cast<ResultT>(dot_val) / static_cast<ResultT>(b_mag_sq));
-}
-
-// 反射 Reflect
-template <Detail::NumericVec T, Detail::NumericVec U, std::size_t N>
-auto Reflect(const Vec<T, N> &a, const Vec<U, N> &n)
-{
-    using ResultT = std::common_type_t<T, U>;
-    return Vec<ResultT, N>(a) - Vec<ResultT, N>(n) * (static_cast<ResultT>(2) * Dot(a, n));
-}
-
-// 计算两个向量之间的弧度
-template <Detail::NumericVec T, Detail::NumericVec U, std::size_t N>
-constexpr double Radian(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
-{
-    double dot = static_cast<double>(Dot(lhs , rhs));
-    double len_product = Length(lhs) * Length(rhs);
-
-    if (len_product < 1e-9)
-        return 0.0;
-
-    double cos_theta = dot / len_product;
-
-    if (cos_theta > 1.0)
-        cos_theta = 1.0;
-    if (cos_theta < -1.0)
-        cos_theta = -1.0;
-
-    return std::acos(cos_theta);
-}
-
-// 计算两个向量之间的角度 
-template <Detail::NumericVec T, Detail::NumericVec U, std::size_t N>
-constexpr double Degree(const Vec<T, N> &lhs, const Vec<U, N> &rhs)
-{
-
-    double dot = 0.0;
-    for (size_t i = 0; i < N; ++i) {
-        dot += static_cast<double>(lhs[i]) * static_cast<double>(rhs[i]);
-    }
-
-    double len_lhs_sq = 0.0;
-    double len_rhs_sq = 0.0;
-    for (size_t i = 0; i < N; ++i) {
-        len_lhs_sq += static_cast<double>(lhs[i]) * static_cast<double>(lhs[i]);
-        len_rhs_sq += static_cast<double>(rhs[i]) * static_cast<double>(rhs[i]);
-    }
-    double len_product = std::sqrt(len_lhs_sq) * std::sqrt(len_rhs_sq);
-
-    if (len_product < 1e-9)
-        return 0.0;
-
-    double cos_theta = dot / len_product;
-    if (cos_theta > 1.0) cos_theta = 1.0;
-    if (cos_theta < -1.0) cos_theta = -1.0;
-
-    return std::acos(cos_theta) * (180.0 / std::numbers::pi);
-}
-
-// 输出运算符
-template <Detail::NumericVec T, std::size_t N>
-std::ostream &operator<<(std::ostream &os, const Vec<T, N> &vec)
-{
-    os << "(";
-    for (size_t i = 0; i < N; ++i)
-    {
-        os << vec[i];
-        if (i < N - 1)
-            os << ", ";
-    }
-    os << ")";
-    return os;
-}
-
-// 类型推导申明
-template <Detail::NumericVec... Args>
-Vec(Args...) -> Vec<std::common_type_t<Args...>, sizeof...(Args)>;
-
-template <typename T, std::size_t N>
-Vec(std::array<T, N>) -> Vec<T, N>;
-
-template <typename T, std::size_t N>
-Vec(std::span<T, N>) -> Vec<T, N>;
-
-// 常用向量类型
-using Vec2i = Vec<int, 2>;
-using Vec2f = Vec<float, 2>;
-using Vec2d = Vec<double, 2>;
-using Vec2l = Vec<long, 2>;
-using Vec3i = Vec<int, 3>;
-using Vec3f = Vec<float, 3>;
-using Vec3d = Vec<double, 3>;
-using Vec3l = Vec<long, 3>;
-using Vec4i = Vec<int, 4>;
-using Vec4f = Vec<float, 4>;
-using Vec4d = Vec<double, 4>;
-using Vec4l = Vec<long, 4>;
-
-// 向量视图
+// VecView 定义
 template <Detail::NumericVec T, std::size_t N, int start, int end, int step>
 struct VecView final
 {
@@ -879,15 +822,244 @@ public:
     }
 
     // 获取视图大小
-    constexpr size_t Size() const { return _ref_index.Size(); }
+    constexpr size_t Size() const { return _ref_index.size(); }
 };
 
-// 输出运算符重载
-template <Detail::NumericVec T, std::size_t N, int start, int end, int step>
-constexpr std::ostream &operator<<(std::ostream &os, const VecView<T, N, start, end, step> &view)
+// 标量与向量的混合运算（非友元，避免模板重定义冲突）
+template <Detail::NumericVec T, std::size_t N, Detail::NumericVec U>
+constexpr auto operator+(const Vec<T, N> &lhs, U rhs)
 {
-    os << Vec<T, Range<start, end, step>::Size()>(view);
-    return os;
+    using ResultType = std::common_type_t<T, U>;
+    Vec<ResultType, N> result;
+    if constexpr (Detail::VecUseSIMD<ResultType, N>)
+    {
+        constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+        auto sv = simd::set1<ResultType>(static_cast<ResultType>(rhs));
+        std::size_t i = 0;
+        for (; i + W <= N; i += W)
+        {
+            auto a = simd::loadu<ResultType>(&lhs.m_data[i]);
+            simd::storeu<ResultType>(&result.m_data[i], simd::add<ResultType>(a, sv));
+        }
+        for (; i < N; ++i)
+        {
+            result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) + static_cast<ResultType>(rhs);
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < N; ++i)
+            result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) + static_cast<ResultType>(rhs);
+    }
+    return result;
 }
 
-#endif // VEC_HPP
+template <Detail::NumericVec T, std::size_t N, Detail::NumericVec U>
+constexpr auto operator+(U lhs, const Vec<T, N> &rhs)
+{
+    using ResultType = std::common_type_t<T, U>;
+    Vec<ResultType, N> result;
+    if constexpr (Detail::VecUseSIMD<ResultType, N>)
+    {
+        constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+        auto sv = simd::set1<ResultType>(static_cast<ResultType>(lhs));
+        std::size_t i = 0;
+        for (; i + W <= N; i += W)
+        {
+            auto b = simd::loadu<ResultType>(&rhs.m_data[i]);
+            simd::storeu<ResultType>(&result.m_data[i], simd::add<ResultType>(sv, b));
+        }
+        for (; i < N; ++i)
+        {
+            result.m_data[i] = static_cast<ResultType>(lhs) + static_cast<ResultType>(rhs.m_data[i]);
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < N; ++i)
+            result.m_data[i] = static_cast<ResultType>(lhs) + static_cast<ResultType>(rhs.m_data[i]);
+    }
+    return result;
+}
+
+template <Detail::NumericVec T, std::size_t N, Detail::NumericVec U>
+constexpr auto operator-(const Vec<T, N> &lhs, U rhs)
+{
+    using ResultType = std::common_type_t<T, U>;
+    Vec<ResultType, N> result;
+    if constexpr (Detail::VecUseSIMD<ResultType, N>)
+    {
+        constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+        auto sv = simd::set1<ResultType>(static_cast<ResultType>(rhs));
+        std::size_t i = 0;
+        for (; i + W <= N; i += W)
+        {
+            auto a = simd::loadu<ResultType>(&lhs.m_data[i]);
+            simd::storeu<ResultType>(&result.m_data[i], simd::sub<ResultType>(a, sv));
+        }
+        for (; i < N; ++i)
+        {
+            result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) - static_cast<ResultType>(rhs);
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < N; ++i)
+            result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) - static_cast<ResultType>(rhs);
+    }
+    return result;
+}
+
+template <Detail::NumericVec T, std::size_t N, Detail::NumericVec U>
+constexpr auto operator-(U lhs, const Vec<T, N> &rhs)
+{
+    using ResultType = std::common_type_t<T, U>;
+    Vec<ResultType, N> result;
+    if constexpr (Detail::VecUseSIMD<ResultType, N>)
+    {
+        constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+        auto sv = simd::set1<ResultType>(static_cast<ResultType>(lhs));
+        std::size_t i = 0;
+        for (; i + W <= N; i += W)
+        {
+            auto b = simd::loadu<ResultType>(&rhs.m_data[i]);
+            simd::storeu<ResultType>(&result.m_data[i], simd::sub<ResultType>(sv, b));
+        }
+        for (; i < N; ++i)
+        {
+            result.m_data[i] = static_cast<ResultType>(lhs) - static_cast<ResultType>(rhs.m_data[i]);
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < N; ++i)
+            result.m_data[i] = static_cast<ResultType>(lhs) - static_cast<ResultType>(rhs.m_data[i]);
+    }
+    return result;
+}
+
+template <Detail::NumericVec T, std::size_t N, Detail::NumericVec U>
+constexpr auto operator*(const Vec<T, N> &lhs, U rhs)
+{
+    using ResultType = std::common_type_t<T, U>;
+    Vec<ResultType, N> result;
+    if constexpr (Detail::VecUseSIMD<ResultType, N>)
+    {
+        constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+        auto sv = simd::set1<ResultType>(static_cast<ResultType>(rhs));
+        std::size_t i = 0;
+        for (; i + W <= N; i += W)
+        {
+            auto a = simd::loadu<ResultType>(&lhs.m_data[i]);
+            simd::storeu<ResultType>(&result.m_data[i], simd::mul<ResultType>(a, sv));
+        }
+        for (; i < N; ++i)
+        {
+            result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) * static_cast<ResultType>(rhs);
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < N; ++i)
+            result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) * static_cast<ResultType>(rhs);
+    }
+    return result;
+}
+
+template <Detail::NumericVec T, std::size_t N, Detail::NumericVec U>
+constexpr auto operator*(U lhs, const Vec<T, N> &rhs)
+{
+    using ResultType = std::common_type_t<T, U>;
+    Vec<ResultType, N> result;
+    if constexpr (Detail::VecUseSIMD<ResultType, N>)
+    {
+        constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+        auto sv = simd::set1<ResultType>(static_cast<ResultType>(lhs));
+        std::size_t i = 0;
+        for (; i + W <= N; i += W)
+        {
+            auto b = simd::loadu<ResultType>(&rhs.m_data[i]);
+            simd::storeu<ResultType>(&result.m_data[i], simd::mul<ResultType>(sv, b));
+        }
+        for (; i < N; ++i)
+        {
+            result.m_data[i] = static_cast<ResultType>(lhs) * static_cast<ResultType>(rhs.m_data[i]);
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < N; ++i)
+            result.m_data[i] = static_cast<ResultType>(lhs) * static_cast<ResultType>(rhs.m_data[i]);
+    }
+    return result;
+}
+
+template <Detail::NumericVec T, std::size_t N, Detail::NumericVec U>
+constexpr auto operator/(const Vec<T, N> &lhs, U rhs)
+{
+    using ResultType = std::common_type_t<T, U>;
+    Vec<ResultType, N> result;
+    if constexpr (Detail::VecUseSIMD<ResultType, N> && !std::is_integral_v<ResultType>)
+    {
+        constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+        auto sv = simd::set1<ResultType>(static_cast<ResultType>(rhs));
+        std::size_t i = 0;
+        for (; i + W <= N; i += W)
+        {
+            auto a = simd::loadu<ResultType>(&lhs.m_data[i]);
+            simd::storeu<ResultType>(&result.m_data[i], simd::div<ResultType>(a, sv));
+        }
+        for (; i < N; ++i)
+        {
+            result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) / static_cast<ResultType>(rhs);
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < N; ++i)
+            result.m_data[i] = static_cast<ResultType>(lhs.m_data[i]) / static_cast<ResultType>(rhs);
+    }
+    return result;
+}
+
+template <Detail::NumericVec T, std::size_t N, Detail::NumericVec U>
+constexpr auto operator/(U lhs, const Vec<T, N> &rhs)
+{
+    using ResultType = std::common_type_t<T, U>;
+    Vec<ResultType, N> result;
+    if constexpr (Detail::VecUseSIMD<ResultType, N> && !std::is_integral_v<ResultType>)
+    {
+        constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+        auto sv = simd::set1<ResultType>(static_cast<ResultType>(lhs));
+        std::size_t i = 0;
+        for (; i + W <= N; i += W)
+        {
+            auto b = simd::loadu<ResultType>(&rhs.m_data[i]);
+            simd::storeu<ResultType>(&result.m_data[i], simd::div<ResultType>(sv, b));
+        }
+        for (; i < N; ++i)
+        {
+            result.m_data[i] = static_cast<ResultType>(lhs) / static_cast<ResultType>(rhs.m_data[i]);
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < N; ++i)
+            result.m_data[i] = static_cast<ResultType>(lhs) / static_cast<ResultType>(rhs.m_data[i]);
+    }
+    return result;
+}
+
+// 常用向量类型
+using Vec2i = Vec<int, 2>;
+using Vec2f = Vec<float, 2>;
+using Vec2d = Vec<double, 2>;
+using Vec2l = Vec<long, 2>;
+using Vec3i = Vec<int, 3>;
+using Vec3f = Vec<float, 3>;
+using Vec3d = Vec<double, 3>;
+using Vec3l = Vec<long, 3>;
+using Vec4i = Vec<int, 4>;
+using Vec4f = Vec<float, 4>;
+using Vec4d = Vec<double, 4>;
+using Vec4l = Vec<long, 4>;

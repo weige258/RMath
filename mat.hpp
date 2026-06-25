@@ -1,18 +1,27 @@
+#pragma once
+
 #include <tuple>
 #include <concepts>
 #include <array>
 #include <cmath>
+#include <cassert>
 #include <variant>
 #include "vec.hpp"
 #include "range.hpp"
-
-#ifndef MAT_HPP
-#define MAT_HPP
 
 namespace Detail
 {
     template <typename T>
     concept NumericMat = std::is_arithmetic_v<T>;
+
+    template <NumericMat T>
+    constexpr bool IsNearZero(T val)
+    {
+        if constexpr (std::is_floating_point_v<T>)
+            return std::abs(val) < static_cast<T>(1e-6);
+        else
+            return val == 0;
+    }
 
     // 多维initlist构造行数据
     template <Detail::NumericMat T, size_t Col>
@@ -33,14 +42,14 @@ namespace Detail
         {
             static_assert(sizeof(T) == 0, "Mat cannot be initialized with nullptr!");
         }
-        consteval NullEmptyPtr(const T *p) : ptr(p)
-        {
-            if (p == nullptr)
-            {
-            }
-        }
+        consteval NullEmptyPtr(const T *p) : ptr(p) {}
+
+        constexpr T operator[](size_t i) const { return ptr[i]; }
     };
-};
+
+    template <typename T, size_t Row, size_t Col>
+    inline constexpr bool MatUseSIMD = simd::SupportsSIMD<T> && (Row * Col >= simd::SIMDWidth<T>);
+}
 
 // 矩阵视图类型声明
 template <Detail::NumericMat T, size_t Row, size_t Col, typename RowRange, typename ColRange>
@@ -50,12 +59,25 @@ struct MatView;
 template <Detail::NumericMat T, size_t Row, size_t Col>
 struct Mat final
 {
-
 private:
     std::array<T, Row * Col> m_data;
 
 public:
     using mat_type_alias = T;
+
+    // 标量混合运算符的友元声明
+    template <Detail::NumericMat U, size_t R, size_t C, Detail::NumericMat V>
+    friend constexpr auto operator+(const Mat<U, R, C> &lhs, V rhs);
+    template <Detail::NumericMat U, size_t R, size_t C, Detail::NumericMat V>
+    friend constexpr auto operator+(V lhs, const Mat<U, R, C> &rhs);
+    template <Detail::NumericMat U, size_t R, size_t C, Detail::NumericMat V>
+    friend constexpr auto operator-(const Mat<U, R, C> &lhs, V rhs);
+    template <Detail::NumericMat U, size_t R, size_t C, Detail::NumericMat V>
+    friend constexpr auto operator-(V lhs, const Mat<U, R, C> &rhs);
+    template <Detail::NumericMat U, size_t R, size_t C, Detail::NumericMat V>
+    friend constexpr auto operator*(const Mat<U, R, C> &lhs, V rhs);
+    template <Detail::NumericMat U, size_t R, size_t C, Detail::NumericMat V>
+    friend constexpr auto operator*(V lhs, const Mat<U, R, C> &rhs);
 
 public:
     // 构造
@@ -65,7 +87,7 @@ public:
 
     constexpr Mat(const Mat &other) = default;
 
-    constexpr Mat(Mat &&other) = default;
+    constexpr Mat(Mat &&other) noexcept = default;
 
     template <Detail::NumericMat U>
     constexpr Mat(const std::initializer_list<U> &list)
@@ -177,15 +199,6 @@ public:
 
     // 数据转化
     template <Detail::NumericMat U>
-    constexpr Mat(const Mat<U, Row, Col> &other)
-    {
-        for (size_t i = 0; i < Row * Col; ++i)
-        {
-            m_data[i] = static_cast<T>(other[i]);
-        }
-    }
-
-    template <Detail::NumericMat U>
     constexpr operator std::array<U, Row *Col>() const
     {
         std::array<U, Row * Col> result{};
@@ -215,27 +228,31 @@ public:
     }
 
     // 指针转换
-    explicit operator T *() { return m_data._data(); }
-    explicit operator const T *() const { return m_data._data(); }
+    explicit operator T *() { return m_data.data(); }
+    explicit operator const T *() const { return m_data.data(); }
 
     // 访问
     constexpr T &operator[](size_t index)
     {
+        assert(index < Row * Col);
         return m_data[index];
     }
 
     constexpr const T &operator[](size_t index) const
     {
+        assert(index < Row * Col);
         return m_data[index];
     }
 
     constexpr T &operator[](size_t row, size_t col)
     {
+        assert(row < Row && col < Col);
         return m_data[row * Col + col];
     }
 
     constexpr const T &operator[](size_t row, size_t col) const
     {
+        assert(row < Row && col < Col);
         return m_data[row * Col + col];
     }
 
@@ -276,13 +293,30 @@ public:
     // 赋值
     constexpr Mat &operator=(const Mat &other) = default;
 
-    constexpr Mat &operator=(Mat &&other) = default;
+    constexpr Mat &operator=(Mat &&other) noexcept = default;
 
     constexpr Mat &operator=(const T &value)
     {
-        for (size_t i = 0; i < Row * Col; ++i)
+        if constexpr (Detail::MatUseSIMD<T, Row, Col>)
         {
-            m_data[i] = value;
+            auto v = simd::set1<T>(value);
+            constexpr std::size_t W = simd::SIMDWidth<T>;
+            std::size_t i = 0;
+            for (; i + W <= Row * Col; i += W)
+            {
+                simd::storeu<T>(&m_data[i], v);
+            }
+            for (; i < Row * Col; ++i)
+            {
+                m_data[i] = value;
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < Row * Col; ++i)
+            {
+                m_data[i] = value;
+            }
         }
         return *this;
     }
@@ -294,36 +328,26 @@ public:
     {
         using ResultType = std::common_type_t<T, U>;
         Mat<ResultType, Row, Col> result;
-        for (size_t i = 0; i < Row * Col; ++i)
+        if constexpr (Detail::CanUseSIMD<T, U> && Detail::MatUseSIMD<ResultType, Row, Col>)
         {
-            result[i] = static_cast<ResultType>(lhs[i]) + static_cast<ResultType>(rhs[i]);
-        }
-        return result;
-    }
-
-    template <typename LType, typename RType>
-        requires(
-            (std::same_as<LType, Mat<T, Row, Col>> && Detail::NumericMat<RType>) ||
-            (Detail::NumericMat<LType> && std::same_as<RType, Mat<T, Row, Col>>))
-    constexpr friend auto operator+(const LType &lhs, const RType &rhs)
-    {
-        using ScalarType = std::conditional_t<Detail::NumericVec<LType>, LType, RType>;
-        using ResultType = std::common_type_t<T, ScalarType>;
-
-        Mat<ResultType, Row, Col> result;
-
-        if constexpr (std::same_as<LType, Mat<T, Row, Col>>)
-        {
-            for (size_t i = 0; i < Row * Col; ++i)
+            constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+            std::size_t i = 0;
+            for (; i + W <= Row * Col; i += W)
             {
-                result[i] = static_cast<ResultType>(lhs[i]) + static_cast<ResultType>(rhs);
+                auto a = simd::loadu<ResultType>(&lhs.m_data[i]);
+                auto b = simd::loadu<ResultType>(&rhs.m_data[i]);
+                simd::storeu<ResultType>(&result.m_data[i], simd::add<ResultType>(a, b));
+            }
+            for (; i < Row * Col; ++i)
+            {
+                result[i] = static_cast<ResultType>(lhs[i]) + static_cast<ResultType>(rhs[i]);
             }
         }
         else
         {
             for (size_t i = 0; i < Row * Col; ++i)
             {
-                result[i] = static_cast<ResultType>(lhs) + static_cast<ResultType>(rhs[i]);
+                result[i] = static_cast<ResultType>(lhs[i]) + static_cast<ResultType>(rhs[i]);
             }
         }
         return result;
@@ -334,36 +358,26 @@ public:
     {
         using ResultType = std::common_type_t<T, U>;
         Mat<ResultType, Row, Col> result;
-        for (size_t i = 0; i < Row * Col; ++i)
+        if constexpr (Detail::CanUseSIMD<T, U> && Detail::MatUseSIMD<ResultType, Row, Col>)
         {
-            result[i] = static_cast<ResultType>(lhs[i]) - static_cast<ResultType>(rhs[i]);
-        }
-        return result;
-    }
-
-    template <typename LType, typename RType>
-        requires(
-            (std::same_as<LType, Mat<T, Row, Col>> && Detail::NumericMat<RType>) ||
-            (Detail::NumericMat<LType> && std::same_as<RType, Mat<T, Row, Col>>))
-    constexpr friend auto operator-(const LType &lhs, const RType &rhs)
-    {
-        using ScalarType = std::conditional_t<Detail::NumericVec<LType>, LType, RType>;
-        using ResultType = std::common_type_t<T, ScalarType>;
-
-        Mat<ResultType, Row, Col> result;
-
-        if constexpr (std::same_as<LType, Mat<T, Row, Col>>)
-        {
-            for (size_t i = 0; i < Row * Col; ++i)
+            constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+            std::size_t i = 0;
+            for (; i + W <= Row * Col; i += W)
             {
-                result[i] = static_cast<ResultType>(lhs[i]) - static_cast<ResultType>(rhs);
+                auto a = simd::loadu<ResultType>(&lhs.m_data[i]);
+                auto b = simd::loadu<ResultType>(&rhs.m_data[i]);
+                simd::storeu<ResultType>(&result.m_data[i], simd::sub<ResultType>(a, b));
+            }
+            for (; i < Row * Col; ++i)
+            {
+                result[i] = static_cast<ResultType>(lhs[i]) - static_cast<ResultType>(rhs[i]);
             }
         }
         else
         {
             for (size_t i = 0; i < Row * Col; ++i)
             {
-                result[i] = static_cast<ResultType>(lhs) - static_cast<ResultType>(rhs[i]);
+                result[i] = static_cast<ResultType>(lhs[i]) - static_cast<ResultType>(rhs[i]);
             }
         }
         return result;
@@ -384,34 +398,6 @@ public:
                     sum += static_cast<ResultType>(lhs[r * Col + k]) * static_cast<ResultType>(rhs[k * OtherCol + c]);
                 }
                 result[r * OtherCol + c] = sum;
-            }
-        }
-        return result;
-    }
-
-    template <typename LType, typename RType>
-        requires(
-            (std::same_as<LType, Mat<T, Row, Col>> && Detail::NumericMat<RType>) ||
-            (Detail::NumericMat<LType> && std::same_as<RType, Mat<T, Row, Col>>))
-    constexpr friend auto operator*(const LType &lhs, const RType &rhs)
-    {
-        using ScalarType = std::conditional_t<Detail::NumericVec<LType>, LType, RType>;
-        using ResultType = std::common_type_t<T, ScalarType>;
-
-        Mat<ResultType, Row, Col> result;
-
-        if constexpr (std::same_as<LType, Mat<T, Row, Col>>)
-        {
-            for (size_t i = 0; i < Row * Col; ++i)
-            {
-                result[i] = static_cast<ResultType>(lhs[i]) * static_cast<ResultType>(rhs);
-            }
-        }
-        else
-        {
-            for (size_t i = 0; i < Row * Col; ++i)
-            {
-                result[i] = static_cast<ResultType>(lhs) * static_cast<ResultType>(rhs[i]);
             }
         }
         return result;
@@ -454,9 +440,27 @@ public:
     constexpr Mat<T, Row, Col> operator-() const
     {
         Mat<T, Row, Col> result;
-        for (size_t i = 0; i < Row * Col; ++i)
+        if constexpr (Detail::MatUseSIMD<T, Row, Col>)
         {
-            result[i] = -m_data[i];
+            constexpr std::size_t W = simd::SIMDWidth<T>;
+            auto z = simd::zero<T>();
+            std::size_t i = 0;
+            for (; i + W <= Row * Col; i += W)
+            {
+                auto a = simd::loadu<T>(&m_data[i]);
+                simd::storeu<T>(&result.m_data[i], simd::sub<T>(z, a));
+            }
+            for (; i < Row * Col; ++i)
+            {
+                result[i] = -m_data[i];
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < Row * Col; ++i)
+            {
+                result[i] = -m_data[i];
+            }
         }
         return result;
     }
@@ -465,36 +469,108 @@ public:
 
     constexpr Mat<T, Row, Col> &operator+=(const Mat<T, Row, Col> &other)
     {
-        for (size_t i = 0; i < Row * Col; ++i)
+        if constexpr (Detail::MatUseSIMD<T, Row, Col>)
         {
-            m_data[i] += other.m_data[i];
+            constexpr std::size_t W = simd::SIMDWidth<T>;
+            std::size_t i = 0;
+            for (; i + W <= Row * Col; i += W)
+            {
+                auto a = simd::loadu<T>(&m_data[i]);
+                auto b = simd::loadu<T>(&other.m_data[i]);
+                simd::storeu<T>(&m_data[i], simd::add<T>(a, b));
+            }
+            for (; i < Row * Col; ++i)
+            {
+                m_data[i] += other.m_data[i];
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < Row * Col; ++i)
+            {
+                m_data[i] += other.m_data[i];
+            }
         }
         return *this;
     }
 
     constexpr Mat<T, Row, Col> &operator+=(const T &value)
     {
-        for (size_t i = 0; i < Row * Col; ++i)
+        if constexpr (Detail::MatUseSIMD<T, Row, Col>)
         {
-            m_data[i] += value;
+            constexpr std::size_t W = simd::SIMDWidth<T>;
+            auto sv = simd::set1<T>(value);
+            std::size_t i = 0;
+            for (; i + W <= Row * Col; i += W)
+            {
+                auto a = simd::loadu<T>(&m_data[i]);
+                simd::storeu<T>(&m_data[i], simd::add<T>(a, sv));
+            }
+            for (; i < Row * Col; ++i)
+            {
+                m_data[i] += value;
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < Row * Col; ++i)
+            {
+                m_data[i] += value;
+            }
         }
         return *this;
     }
 
     constexpr Mat<T, Row, Col> &operator-=(const Mat<T, Row, Col> &other)
     {
-        for (size_t i = 0; i < Row * Col; ++i)
+        if constexpr (Detail::MatUseSIMD<T, Row, Col>)
         {
-            m_data[i] -= other.m_data[i];
+            constexpr std::size_t W = simd::SIMDWidth<T>;
+            std::size_t i = 0;
+            for (; i + W <= Row * Col; i += W)
+            {
+                auto a = simd::loadu<T>(&m_data[i]);
+                auto b = simd::loadu<T>(&other.m_data[i]);
+                simd::storeu<T>(&m_data[i], simd::sub<T>(a, b));
+            }
+            for (; i < Row * Col; ++i)
+            {
+                m_data[i] -= other.m_data[i];
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < Row * Col; ++i)
+            {
+                m_data[i] -= other.m_data[i];
+            }
         }
         return *this;
     }
 
     constexpr Mat<T, Row, Col> &operator-=(const T &value)
     {
-        for (size_t i = 0; i < Row * Col; ++i)
+        if constexpr (Detail::MatUseSIMD<T, Row, Col>)
         {
-            m_data[i] -= value;
+            constexpr std::size_t W = simd::SIMDWidth<T>;
+            auto sv = simd::set1<T>(value);
+            std::size_t i = 0;
+            for (; i + W <= Row * Col; i += W)
+            {
+                auto a = simd::loadu<T>(&m_data[i]);
+                simd::storeu<T>(&m_data[i], simd::sub<T>(a, sv));
+            }
+            for (; i < Row * Col; ++i)
+            {
+                m_data[i] -= value;
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < Row * Col; ++i)
+            {
+                m_data[i] -= value;
+            }
         }
         return *this;
     }
@@ -524,9 +600,27 @@ public:
     template <Detail::NumericMat U>
     constexpr Mat &operator*=(const U &scalar)
     {
-        for (size_t i = 0; i < Row * Col; ++i)
+        if constexpr (Detail::MatUseSIMD<T, Row, Col>)
         {
-            m_data[i] = static_cast<T>(m_data[i] * scalar);
+            constexpr std::size_t W = simd::SIMDWidth<T>;
+            auto sv = simd::set1<T>(static_cast<T>(scalar));
+            std::size_t i = 0;
+            for (; i + W <= Row * Col; i += W)
+            {
+                auto a = simd::loadu<T>(&m_data[i]);
+                simd::storeu<T>(&m_data[i], simd::mul<T>(a, sv));
+            }
+            for (; i < Row * Col; ++i)
+            {
+                m_data[i] = static_cast<T>(m_data[i] * scalar);
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < Row * Col; ++i)
+            {
+                m_data[i] = static_cast<T>(m_data[i] * scalar);
+            }
         }
         return *this;
     }
@@ -539,93 +633,6 @@ public:
 
     // 比较操作符 (C++20)
     auto operator<=>(const Mat &other) const = default;
-
-    // 相机方法
-    constexpr void SetViewMatrix(const Vec<T, 3> &camera_pos, const Vec<T, 3> &camera_direction, const Vec<T, 3> &camera_up)
-        requires(Row == 4 && Col == 4)
-    {
-        Mat<T, 4, 4> rotation_matrix = Mat<T, 4, 4>::MakeIdentity();
-        Mat<T, 4, 4> translation_matrix = Mat<T, 4, 4>::MakeIdentity();
-
-        Vec<T, 3> front = Normalize(camera_direction);
-        Vec<T, 3> right = Normalize(camera_direction ^ camera_up);
-        Vec<T, 3> up = Normalize(right ^ camera_direction);
-
-        rotation_matrix[0, 0] = right[0];
-        rotation_matrix[0, 1] = right[1];
-        rotation_matrix[0, 2] = right[2];
-        rotation_matrix[1, 0] = up[0];
-        rotation_matrix[1, 1] = up[1];
-        rotation_matrix[1, 2] = up[2];
-        rotation_matrix[2, 0] = front[0];
-        rotation_matrix[2, 1] = front[1];
-        rotation_matrix[2, 2] = front[2];
-
-        translation_matrix[3, 0] = -camera_pos[0];
-        translation_matrix[3, 1] = -camera_pos[1];
-        translation_matrix[3, 2] = -camera_pos[2];
-
-        *this = rotation_matrix * translation_matrix;
-    }
-
-    constexpr void SetViewMatrix(const Vec<T, 2> &pos, T rotation_radians, T zoom)
-        requires(Row == 4 && Col == 4)
-    {
-        this->m_data.fill(0);
-
-        T cos_r = std::cos(rotation_radians);
-        T sin_r = std::sin(rotation_radians);
-
-        (*this)[0, 0] = cos_r * zoom;
-        (*this)[0, 1] = sin_r * zoom;
-        (*this)[0, 3] = -(pos[0] * cos_r + pos[1] * sin_r) * zoom;
-
-        (*this)[1, 0] = -sin_r * zoom;
-        (*this)[1, 1] = cos_r * zoom;
-        (*this)[1, 3] = (pos[0] * sin_r - pos[1] * cos_r) * zoom;
-
-        (*this)[2, 2] = 1;
-
-        (*this)[3, 3] = 1;
-    }
-
-    constexpr void SetProjectionMatrix(T fov_radians, T aspect, T near, T far)
-        requires(Row == 4 && Col == 4)
-    {
-        this->m_data.fill(0);
-
-        T tanHalfFov = std::tan(fov_radians / static_cast<T>(2));
-
-        (*this)[0, 0] = static_cast<T>(1) / (aspect * tanHalfFov);
-        (*this)[1, 1] = static_cast<T>(1) / tanHalfFov;
-        (*this)[2, 2] = -(far + near) / (far - near);
-        (*this)[2, 3] = -(static_cast<T>(2) * far * near) / (far - near);
-        (*this)[3, 2] = static_cast<T>(-1);
-    }
-
-    constexpr void SetProjectionMatrix(T left, T right, T bottom, T top, T near, T far)
-        requires(Row == 4 && Col == 4)
-    {
-        this->m_data.fill(0);
-
-        (*this)[0, 0] = static_cast<T>(2) / (right - left);
-        (*this)[1, 1] = static_cast<T>(2) / (top - bottom);
-        (*this)[2, 2] = -static_cast<T>(2) / (far - near);
-
-        (*this)[0, 3] = -(right + left) / (right - left);
-        (*this)[1, 3] = -(top + bottom) / (top - bottom);
-        (*this)[2, 3] = -(far + near) / (far - near);
-        (*this)[3, 3] = static_cast<T>(1);
-    }
-
-    constexpr void SetProjectionMatrix(T width, T height)
-        requires(Row == 4 && Col == 4)
-    {
-        T half_w = width / static_cast<T>(2);
-        T half_h = height / static_cast<T>(2);
-
-        SetProjectionMatrix(-half_w, half_w, half_h, -half_h, static_cast<T>(-1), static_cast<T>(1));
-    }
 
     // 查询方法
     static constexpr size_t Size() { return Row * Col; };
@@ -641,309 +648,173 @@ public:
     static const std::type_info &ValueType() noexcept { return typeid(T); }
 };
 
-// 向量与矩阵乘法
-template <Detail::NumericMat T, Detail::NumericMat U, size_t N>
-constexpr auto &operator*=(Vec<U, N> &lhs, const Mat<T, N, N> &rhs)
-{
-    Vec<T, N> temp;
-    for (size_t c = 0; c < N; ++c)
-    {
-        T sum = 0;
-        for (size_t r = 0; r < N; ++r)
-        {
-            sum += (lhs)[r] * static_cast<T>(rhs[r, c]);
-        }
-        temp[c] = sum;
-    }
-    lhs = temp;
-    return lhs;
-}
-
-// 矩阵 Hadamard 积
-template <typename... Args>
-    requires(sizeof...(Args) >= 2) &&
-            (... && requires { typename std::remove_cvref_t<Args>::mat_type_alias; })
-constexpr auto Hadamard(const Args &...args)
-{
-    using FirstArg = std::tuple_element_t<0, std::tuple<Args...>>;
-
-    constexpr size_t R = std::remove_cvref_t<FirstArg>::RowSize();
-    constexpr size_t C = std::remove_cvref_t<FirstArg>::ColSize();
-
-    static_assert((... && (Args::RowSize() == R && Args::ColSize() == C)),
-                  "All matrices must have the same dimensions.");
-
-    using ResultScalar = std::common_type_t<typename std::remove_cvref_t<Args>::mat_type_alias...>;
-
-    Mat<ResultScalar, R, C> result;
-
-    for (size_t i = 0; i < R * C; ++i)
-    {
-        result[i] = (static_cast<ResultScalar>(args[i]) * ...);
-    }
-
-    return result;
-}
-
-// 矩阵克罗内积
-
-template <Detail::NumericMat T, Detail::NumericMat U,
-          size_t Row1, size_t Col1, size_t Row2, size_t Col2>
-constexpr auto KroneckerProduct(const Mat<T, Row1, Col1> &lhs,
-                                const Mat<U, Row2, Col2> &rhs)
+// 标量与矩阵的混合运算（非友元，避免模板重定义冲突）
+template <Detail::NumericMat T, size_t Row, size_t Col, Detail::NumericMat U>
+constexpr auto operator+(const Mat<T, Row, Col> &lhs, U rhs)
 {
     using ResultType = std::common_type_t<T, U>;
-    constexpr size_t ResultRow = Row1 * Row2;
-    constexpr size_t ResultCol = Col1 * Col2;
-
-    Mat<ResultType, ResultRow, ResultCol> result;
-
-    for (size_t i = 0; i < Row1; ++i)
+    Mat<ResultType, Row, Col> result;
+    if constexpr (Detail::MatUseSIMD<ResultType, Row, Col>)
     {
-        for (size_t j = 0; j < Col1; ++j)
+        constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+        auto sv = simd::set1<ResultType>(static_cast<ResultType>(rhs));
+        std::size_t i = 0;
+        for (; i + W <= Row * Col; i += W)
         {
-            T scalar = lhs[i, j];
-            for (size_t k = 0; k < Row2; ++k)
-            {
-                for (size_t l = 0; l < Col2; ++l)
-                {
-                    result[i * Row2 + k, j * Col2 + l] =
-                        static_cast<ResultType>(scalar) *
-                        static_cast<ResultType>(rhs[k, l]);
-                }
-            }
+            auto a = simd::loadu<ResultType>(&lhs.m_data[i]);
+            simd::storeu<ResultType>(&result.m_data[i], simd::add<ResultType>(a, sv));
         }
-    }
-    return result;
-}
-
-template <typename T, typename... Args>
-constexpr auto Kronecker(const T &first, const Args &...rest)
-{
-    if constexpr (sizeof...(rest) == 0)
-    {
-        return first;
+        for (; i < Row * Col; ++i)
+        {
+            result[i] = static_cast<ResultType>(lhs[i]) + static_cast<ResultType>(rhs);
+        }
     }
     else
     {
-        return KroneckerProduct(first, Kronecker(rest...));
-    }
-}
-
-// 转置
-template <Detail::NumericMat T, size_t Row, size_t Col>
-constexpr auto Transpose(const Mat<T, Row, Col> &mat)
-{
-    Mat<T, Col, Row> result;
-    for (size_t r = 0; r < Row; ++r)
-    {
-        for (size_t c = 0; c < Col; ++c)
-        {
-            result[c, r] = mat[r, c];
-        }
+        for (size_t i = 0; i < Row * Col; ++i)
+            result[i] = static_cast<ResultType>(lhs[i]) + static_cast<ResultType>(rhs);
     }
     return result;
 }
 
-// 辅助函数：获取子矩阵 (用于计算余子式)
-template <Detail::NumericMat T, size_t Row, size_t Col>
-constexpr auto MinorMatrix(const Mat<T, Row, Col> &mat, size_t omitRow, size_t omitCol)
+template <Detail::NumericMat T, size_t Row, size_t Col, Detail::NumericMat U>
+constexpr auto operator+(U lhs, const Mat<T, Row, Col> &rhs)
 {
-    static_assert(Row > 1 && Col > 1, "Cannot get minor of a 1x1 matrix.");
-    Mat<T, Row - 1, Col - 1> result;
-    size_t rr = 0;
-    for (size_t r = 0; r < Row; ++r)
+    using ResultType = std::common_type_t<T, U>;
+    Mat<ResultType, Row, Col> result;
+    if constexpr (Detail::MatUseSIMD<ResultType, Row, Col>)
     {
-        if (r == omitRow)
-            continue;
-        size_t cc = 0;
-        for (size_t c = 0; c < Col; ++c)
+        constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+        auto sv = simd::set1<ResultType>(static_cast<ResultType>(lhs));
+        std::size_t i = 0;
+        for (; i + W <= Row * Col; i += W)
         {
-            if (c == omitCol)
-                continue;
-            result[rr, cc] = mat[r, c];
-            cc++;
+            auto b = simd::loadu<ResultType>(&rhs.m_data[i]);
+            simd::storeu<ResultType>(&result.m_data[i], simd::add<ResultType>(sv, b));
         }
-        rr++;
-    }
-    return result;
-}
-
-// 行列式取值
-template <Detail::NumericMat T, size_t Size>
-constexpr auto Det(const Mat<T, Size, Size> &mat)
-{
-    if constexpr (Size == 1)
-        return mat[0];
-    if constexpr (Size == 2)
-        return mat[0, 0] * mat[1, 1] - mat[0, 1] * mat[1, 0];
-
-    auto temp = mat;
-    T det = 1;
-
-    for (size_t i = 0; i < Size; ++i)
-    {
-        // 寻找主元
-        size_t pivot = i;
-        for (size_t j = i + 1; j < Size; ++j)
+        for (; i < Row * Col; ++i)
         {
-            if (std::abs(temp[j, i]) > std::abs(temp[pivot, i]))
-                pivot = j;
-        }
-
-        if (std::abs(temp[pivot, i]) < 1e-9)
-            return static_cast<T>(0);
-
-        if (pivot != i)
-        {
-            // 交换行，行列式变号
-            for (size_t k = i; k < Size; ++k)
-                std::swap(temp[i, k], temp[pivot, k]);
-            det *= -1;
-        }
-
-        det *= temp[i, i];
-
-        for (size_t j = i + 1; j < Size; ++j)
-        {
-            T factor = temp[j, i] / temp[i, i];
-            for (size_t k = i + 1; k < Size; ++k)
-            {
-                temp[j, k] -= factor * temp[i, k];
-            }
+            result[i] = static_cast<ResultType>(lhs) + static_cast<ResultType>(rhs[i]);
         }
     }
-    return det;
-}
-
-// --- 代数余子式 (Cofactor) ---
-template <Detail::NumericMat T, size_t Size>
-constexpr auto Cofactor(const Mat<T, Size, Size> &mat, size_t row, size_t col)
-{
-    auto minorDet = Det(MinorMatrix(mat, row, col));
-    return ((row + col) % 2 == 0) ? minorDet : -minorDet;
-}
-
-// --- 伴随矩阵 (Adjoint) ---
-template <Detail::NumericMat T, size_t Size>
-constexpr auto Adjoint(const Mat<T, Size, Size> &mat)
-{
-    if constexpr (Size == 1)
-    {
-        return Mat<T, 1, 1>{1};
-    }
-    Mat<T, Size, Size> adj;
-    for (size_t r = 0; r < Size; ++r)
-    {
-        for (size_t c = 0; c < Size; ++c)
-        {
-            adj[c, r] = Cofactor(mat, r, c);
-        }
-    }
-    return adj;
-}
-
-// 逆矩阵
-template <Detail::NumericMat T, size_t Size>
-constexpr auto Inverse(const Mat<T, Size, Size> &mat)
-{
-    auto det = Det(mat);
-
-    if (std::abs(det) < 1e-9)
-    {
-        throw std::runtime_error("Matrix is singular and cannot be inverted.");
-    }
-    return Adjoint(mat) * (static_cast<T>(1) / det);
-}
-
-// 矩阵的迹
-template <Detail::NumericMat T, size_t Size>
-constexpr auto Trace(const Mat<T, Size, Size> &mat)
-{
-    auto trace = 0;
-    for (size_t i = 0; i < Size; ++i)
-    {
-        trace += mat[i, i];
-    }
-    return trace;
-}
-
-// 矩阵的秩
-template <Detail::NumericMat T, size_t Row, size_t Col>
-constexpr size_t Rank(const Mat<T, Row, Col> &mat)
-{
-    auto temp = mat;
-    size_t rank = 0;
-    std::vector<bool> row_used(Row, false);
-
-    for (size_t i = 0; i < Col && rank < Row; ++i)
-    {
-        size_t pivot = Row;
-        for (size_t j = 0; j < Row; ++j)
-        {
-            if (!row_used[j] && std::abs(temp[j, i]) > 1e-9)
-            {
-                pivot = j;
-                break;
-            }
-        }
-
-        if (pivot != Row)
-        {
-            row_used[pivot] = true;
-            rank++;
-            for (size_t j = 0; j < Row; ++j)
-            {
-                if (!row_used[j])
-                {
-                    T factor = temp[j, i] / temp[pivot, i];
-                    for (size_t k = i; k < Col; ++k)
-                    {
-                        temp[j, k] -= factor * temp[pivot, k];
-                    }
-                }
-            }
-        }
-    }
-    return rank;
-}
-
-// 满秩判断
-template <Detail::NumericMat T, size_t Size>
-constexpr bool IsFullRank(const Mat<T, Size, Size> &mat)
-{
-    if (Det(mat) != 0 && Rank(mat) == Size)
-        return true;
     else
-        return false;
+    {
+        for (size_t i = 0; i < Row * Col; ++i)
+            result[i] = static_cast<ResultType>(lhs) + static_cast<ResultType>(rhs[i]);
+    }
+    return result;
 }
 
-// 输出运算符
-template <Detail::NumericMat T, size_t Row, size_t Col>
-std::ostream &operator<<(std::ostream &os, const Mat<T, Row, Col> &mat)
+template <Detail::NumericMat T, size_t Row, size_t Col, Detail::NumericMat U>
+constexpr auto operator-(const Mat<T, Row, Col> &lhs, U rhs)
 {
-
-    for (size_t r = 0; r < Row; ++r)
+    using ResultType = std::common_type_t<T, U>;
+    Mat<ResultType, Row, Col> result;
+    if constexpr (Detail::MatUseSIMD<ResultType, Row, Col>)
     {
-        os << "[";
-        for (size_t c = 0; c < Col; ++c)
+        constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+        auto sv = simd::set1<ResultType>(static_cast<ResultType>(rhs));
+        std::size_t i = 0;
+        for (; i + W <= Row * Col; i += W)
         {
-            if (mat[r, c] >= 0)
-            {
-                os << " ";
-            }
-            os << mat[r, c];
-            if (c + 1 < Col)
-            {
-                os << ", ";
-            }
+            auto a = simd::loadu<ResultType>(&lhs.m_data[i]);
+            simd::storeu<ResultType>(&result.m_data[i], simd::sub<ResultType>(a, sv));
         }
-        os << "]";
-        if (r + 1 < Row)
-            os << "\n";
+        for (; i < Row * Col; ++i)
+        {
+            result[i] = static_cast<ResultType>(lhs[i]) - static_cast<ResultType>(rhs);
+        }
     }
+    else
+    {
+        for (size_t i = 0; i < Row * Col; ++i)
+            result[i] = static_cast<ResultType>(lhs[i]) - static_cast<ResultType>(rhs);
+    }
+    return result;
+}
 
-    return os;
+template <Detail::NumericMat T, size_t Row, size_t Col, Detail::NumericMat U>
+constexpr auto operator-(U lhs, const Mat<T, Row, Col> &rhs)
+{
+    using ResultType = std::common_type_t<T, U>;
+    Mat<ResultType, Row, Col> result;
+    if constexpr (Detail::MatUseSIMD<ResultType, Row, Col>)
+    {
+        constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+        auto sv = simd::set1<ResultType>(static_cast<ResultType>(lhs));
+        std::size_t i = 0;
+        for (; i + W <= Row * Col; i += W)
+        {
+            auto b = simd::loadu<ResultType>(&rhs.m_data[i]);
+            simd::storeu<ResultType>(&result.m_data[i], simd::sub<ResultType>(sv, b));
+        }
+        for (; i < Row * Col; ++i)
+        {
+            result[i] = static_cast<ResultType>(lhs) - static_cast<ResultType>(rhs[i]);
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < Row * Col; ++i)
+            result[i] = static_cast<ResultType>(lhs) - static_cast<ResultType>(rhs[i]);
+    }
+    return result;
+}
+
+template <Detail::NumericMat T, size_t Row, size_t Col, Detail::NumericMat U>
+constexpr auto operator*(const Mat<T, Row, Col> &lhs, U rhs)
+{
+    using ResultType = std::common_type_t<T, U>;
+    Mat<ResultType, Row, Col> result;
+    if constexpr (Detail::MatUseSIMD<ResultType, Row, Col>)
+    {
+        constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+        auto sv = simd::set1<ResultType>(static_cast<ResultType>(rhs));
+        std::size_t i = 0;
+        for (; i + W <= Row * Col; i += W)
+        {
+            auto a = simd::loadu<ResultType>(&lhs.m_data[i]);
+            simd::storeu<ResultType>(&result.m_data[i], simd::mul<ResultType>(a, sv));
+        }
+        for (; i < Row * Col; ++i)
+        {
+            result[i] = static_cast<ResultType>(lhs[i]) * static_cast<ResultType>(rhs);
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < Row * Col; ++i)
+            result[i] = static_cast<ResultType>(lhs[i]) * static_cast<ResultType>(rhs);
+    }
+    return result;
+}
+
+template <Detail::NumericMat T, size_t Row, size_t Col, Detail::NumericMat U>
+constexpr auto operator*(U lhs, const Mat<T, Row, Col> &rhs)
+{
+    using ResultType = std::common_type_t<T, U>;
+    Mat<ResultType, Row, Col> result;
+    if constexpr (Detail::MatUseSIMD<ResultType, Row, Col>)
+    {
+        constexpr std::size_t W = simd::SIMDWidth<ResultType>;
+        auto sv = simd::set1<ResultType>(static_cast<ResultType>(lhs));
+        std::size_t i = 0;
+        for (; i + W <= Row * Col; i += W)
+        {
+            auto b = simd::loadu<ResultType>(&rhs.m_data[i]);
+            simd::storeu<ResultType>(&result.m_data[i], simd::mul<ResultType>(sv, b));
+        }
+        for (; i < Row * Col; ++i)
+        {
+            result[i] = static_cast<ResultType>(lhs) * static_cast<ResultType>(rhs[i]);
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < Row * Col; ++i)
+            result[i] = static_cast<ResultType>(lhs) * static_cast<ResultType>(rhs[i]);
+    }
+    return result;
 }
 
 // 常用矩阵类型
@@ -1084,13 +955,3 @@ public:
         return result;
     }
 };
-
-// 视图输出运算符重载
-template <Detail::NumericMat T, size_t Row, size_t Col, typename RowRange, typename ColRange>
-std::ostream &operator<<(std::ostream &os, const MatView<T, Row, Col, RowRange, ColRange> &mat_view)
-{
-    os << Mat<T, RowRange::Size(), ColRange::Size()>(mat_view);
-    return os;
-}
-
-#endif // MAT_HPP

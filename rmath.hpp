@@ -1,3 +1,3 @@
-#include "vec.hpp"
-#include "mat.hpp"
-#include "range.hpp"
+#pragma once
+
+#include "math_functions.hpp"
