@@ -5,7 +5,6 @@
 #include <vector>
 #include <span>
 #include <concepts>
-#include <iostream>
 #include <cmath>
 #include <cassert>
 #include <numbers>
@@ -18,25 +17,27 @@ namespace Detail
     template <typename T>
     concept NumericVec = std::is_arithmetic_v<T>;
 
-    // 结构体：ComplieTimeIndexCheck 用于编译期检查索引是否超出范围
+    // 结构体：CompileTimeIndexCheck 用于编译期检查索引是否超出范围
     template <std::size_t Limit>
-    struct ComplieTimeIndexCheckVec
+    struct CompileTimeIndexCheckVec
     {
         std::size_t value;
 
-        consteval ComplieTimeIndexCheckVec(std::size_t i) : value(i)
+        template <std::size_t I>
+        consteval CompileTimeIndexCheckVec(std::integral_constant<std::size_t, I>) : value(I)
         {
-            static_assert(i < Limit, "Vec index out of bounds!");
+            static_assert(I < Limit, "Vec index out of bounds!");
         }
     };
 
     // SIMD 辅助：判断两个类型是否都支持 SIMD 且结果类型也支持
     template <typename T, typename U>
-    inline constexpr bool CanUseSIMD = simd::SupportsSIMD<T> && simd::SupportsSIMD<U> &&
+    inline constexpr bool CanUseSIMD = std::is_same_v<T, U> && simd::SupportsSIMD<T> &&
+                                         simd::SupportsSIMD<U> &&
                                          simd::SupportsSIMD<std::common_type_t<T, U>>;
 
     template <typename T, std::size_t N>
-    inline constexpr bool VecUseSIMD = simd::SupportsSIMD<T> && (N >= simd::SIMDWidth<T>);
+    inline constexpr bool VecUseSIMD = simd::SupportsSIMD<T> && (simd::SIMDWidth<T> > 1) && (N >= simd::SIMDWidth<T>);
 }
 
 // 视图声明
@@ -135,6 +136,10 @@ public:
         std::copy(s.begin(), s.end(), m_data.begin());
     }
 
+    static constexpr Vec<T,N> MakeZero(){
+         return Vec<T,N>{0};
+    }
+
     // 析构
     ~Vec() = default;
 
@@ -154,7 +159,7 @@ public:
     operator std::array<U, N>() const
     {
         std::array<U, N> result;
-        for (int i = 0; i < N; ++i)
+        for (size_t i = 0; i < N; ++i)
         {
             result[i] = static_cast<U>(m_data[i]);
         }
@@ -208,7 +213,12 @@ public:
         return m_data[index];
     }
 
-    constexpr T &operator[](Detail::ComplieTimeIndexCheckVec<N> index)
+    constexpr T &operator[](Detail::CompileTimeIndexCheckVec<N> index)
+    {
+        return m_data[index.value];
+    }
+
+    constexpr const T &operator[](Detail::CompileTimeIndexCheckVec<N> index) const
     {
         return m_data[index.value];
     }
@@ -219,7 +229,26 @@ public:
         return VecView<T, N, start, end, step>(*this, range);
     }
 
+    template <int start, int end, int step>
+    constexpr auto operator[](Range<start, end, step> range) const
+    {
+        constexpr std::size_t M = Range<start, end, step>::Size();
+        Vec<T, M> result;
+        std::size_t i = 0;
+        for (int val : range)
+        {
+            result[i++] = m_data[(val < 0) ? static_cast<std::size_t>(static_cast<int>(N) + val) : static_cast<std::size_t>(val)];
+        }
+        return result;
+    }
+
     constexpr T &X()
+        requires(0 < N)
+    {
+        return m_data[0];
+    }
+
+    constexpr const T &X() const
         requires(0 < N)
     {
         return m_data[0];
@@ -231,7 +260,19 @@ public:
         return m_data[1];
     }
 
+    constexpr const T &Y() const
+        requires(1 < N)
+    {
+        return m_data[1];
+    }
+
     constexpr T &Z()
+        requires(2 < N)
+    {
+        return m_data[2];
+    }
+
+    constexpr const T &Z() const
         requires(2 < N)
     {
         return m_data[2];
@@ -243,14 +284,112 @@ public:
         return m_data[3];
     }
 
+    constexpr const T &W() const
+        requires(3 < N)
+    {
+        return m_data[3];
+    }
+
     constexpr VecView<T, N, 0, 3, 1> XYZ()
+        requires(3 <= N)
     {
         return VecView<T, N, 0, 3, 1>(*this, Range<0, 3, 1>());
     }
 
+    constexpr Vec<T, 3> XYZ() const
+        requires(3 <= N)
+    {
+        return Vec<T, 3>{m_data[0], m_data[1], m_data[2]};
+    }
+
+    // ===================== 实例 Set 方法 =====================
+
+    // 就地填充标量
+    constexpr Vec& SetZero(){
+        for (size_t i = 0; i < N; ++i)
+            m_data[i] = 0;
+        return *this;
+    }
+
+    constexpr Vec &SetValue(T value)
+    {
+        for (size_t i = 0; i < N; ++i)
+            m_data[i] = value;
+        return *this;
+    }
+
+    constexpr Vec &SetX(T val)
+        requires(0 < N)
+    {
+        m_data[0] = val;
+        return *this;
+    }
+
+    constexpr Vec &SetY(T val)
+        requires(1 < N)
+    {
+        m_data[1] = val;
+        return *this;
+    }
+
+    constexpr Vec &SetZ(T val)
+        requires(2 < N)
+    {
+        m_data[2] = val;
+        return *this;
+    }
+
+    constexpr Vec &SetW(T val)
+        requires(3 < N)
+    {
+        m_data[3] = val;
+        return *this;
+    }
+
+    template <Detail::NumericVec U, Detail::NumericVec V, Detail::NumericVec W>
+    constexpr Vec &SetXYZ(U x, V y, W z)
+        requires(3 <= N)
+    {
+        m_data[0] = static_cast<T>(x);
+        m_data[1] = static_cast<T>(y);
+        m_data[2] = static_cast<T>(z);
+        return *this;
+    }
+
+    template <Detail::NumericVec U>
+    constexpr Vec &SetXYZ(const Vec<U, 3> &xyz)
+        requires(3 <= N)
+    {
+        m_data[0] = static_cast<T>(xyz[0]);
+        m_data[1] = static_cast<T>(xyz[1]);
+        m_data[2] = static_cast<T>(xyz[2]);
+        return *this;
+    }
+
+    template <Detail::NumericVec U, Detail::NumericVec V, Detail::NumericVec W>
+    constexpr Vec &SetRGB(U r, V g, W b)
+        requires(3 <= N)
+    {
+        return SetXYZ(r, g, b);
+    }
+
+    template <Detail::NumericVec U>
+    constexpr Vec &SetRGB(const Vec<U, 3> &rgb)
+        requires(3 <= N)
+    {
+        return SetXYZ(rgb);
+    }
+
     constexpr VecView<T, N, 0, 3, 1> RGB()
+        requires(3 <= N)
     {
         return VecView<T, N, 0, 3, 1>(*this, Range<0, 3, 1>());
+    }
+
+    constexpr Vec<T, 3> RGB() const
+        requires(3 <= N)
+    {
+        return Vec<T, 3>{m_data[0], m_data[1], m_data[2]};
     }
 
     // 赋值
@@ -823,6 +962,19 @@ public:
 
     // 获取视图大小
     constexpr size_t Size() const { return _ref_index.size(); }
+
+    // 单元素访问
+    constexpr T &operator[](size_t index)
+    {
+        assert(index < _ref_index.size());
+        return _original_vec[_ref_index[index]];
+    }
+
+    constexpr const T &operator[](size_t index) const
+    {
+        assert(index < _ref_index.size());
+        return _original_vec[_ref_index[index]];
+    }
 };
 
 // 标量与向量的混合运算（非友元，避免模板重定义冲突）

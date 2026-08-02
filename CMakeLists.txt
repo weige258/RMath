@@ -5,7 +5,8 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# SIMD detection and flags
+# SIMD detection and flags (可选，避免向所有消费者强制透传 -mavx2/-mfma)
+option(RMATH_ENABLE_SIMD "Enable SIMD code generation for the rmath interface target" ON)
 include(CheckCXXCompilerFlag)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
@@ -46,8 +47,8 @@ target_include_directories(rmath INTERFACE
     $<INSTALL_INTERFACE:include>
 )
 
-# Apply SIMD flags to the interface target
-if(RMATH_SIMD_FLAGS)
+# Apply SIMD flags to the interface target (仅当启用时透传)
+if(RMATH_ENABLE_SIMD AND RMATH_SIMD_FLAGS)
     target_compile_options(rmath INTERFACE ${RMATH_SIMD_FLAGS})
 endif()
 
@@ -65,3 +66,13 @@ endif()
 # CTest integration
 enable_testing()
 add_test(NAME RMathTest COMMAND rmath_test)
+
+# Install rules (header-only interface library)
+include(GNUInstallDirs)
+install(TARGETS rmath EXPORT RMathTargets)
+install(FILES rmath.hpp vec.hpp mat.hpp range.hpp simd_utils.hpp math_functions.hpp
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(EXPORT RMathTargets
+        FILE RMathTargets.cmake
+        NAMESPACE RMath::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/RMath)

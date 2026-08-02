@@ -5,7 +5,6 @@
 #include <array>
 #include <cmath>
 #include <cassert>
-#include <variant>
 #include "vec.hpp"
 #include "range.hpp"
 
@@ -22,6 +21,19 @@ namespace Detail
         else
             return val == 0;
     }
+
+    // 编译期索引检查 (与 Vec 的 CompileTimeIndexCheckVec 对称)
+    template <std::size_t Limit>
+    struct CompileTimeIndexCheckMat
+    {
+        std::size_t value;
+
+        template <std::size_t I>
+        consteval CompileTimeIndexCheckMat(std::integral_constant<std::size_t, I>) : value(I)
+        {
+            static_assert(I < Limit, "Mat index out of bounds!");
+        }
+    };
 
     // 多维initlist构造行数据
     template <Detail::NumericMat T, size_t Col>
@@ -48,7 +60,7 @@ namespace Detail
     };
 
     template <typename T, size_t Row, size_t Col>
-    inline constexpr bool MatUseSIMD = simd::SupportsSIMD<T> && (Row * Col >= simd::SIMDWidth<T>);
+    inline constexpr bool MatUseSIMD = simd::SupportsSIMD<T> && (simd::SIMDWidth<T> > 1) && (Row * Col >= simd::SIMDWidth<T>);
 }
 
 // 矩阵视图类型声明
@@ -194,6 +206,215 @@ public:
         return res;
     }
 
+    // 2D 旋转矩阵 (仅 2x2)
+    static constexpr Mat<T, 2, 2> MakeRotation(T radians)
+        requires(Row == 2 && Col == 2)
+    {
+        Mat<T, 2, 2> r;
+        T c = std::cos(radians);
+        T s = std::sin(radians);
+        r[0, 0] = c; r[0, 1] = -s;
+        r[1, 0] = s; r[1, 1] = c;
+        return r;
+    }
+
+    // 3D 旋转矩阵 (仅 3x3)
+    static constexpr Mat<T, 3, 3> MakeRotationX(T radians)
+        requires(Row == 3 && Col == 3)
+    {
+        Mat<T, 3, 3> r = Mat<T, 3, 3>::MakeIdentity();
+        T c = std::cos(radians);
+        T s = std::sin(radians);
+        r[1, 1] = c; r[1, 2] = -s;
+        r[2, 1] = s; r[2, 2] = c;
+        return r;
+    }
+
+    static constexpr Mat<T, 3, 3> MakeRotationY(T radians)
+        requires(Row == 3 && Col == 3)
+    {
+        Mat<T, 3, 3> r = Mat<T, 3, 3>::MakeIdentity();
+        T c = std::cos(radians);
+        T s = std::sin(radians);
+        r[0, 0] = c; r[0, 2] = s;
+        r[2, 0] = -s; r[2, 2] = c;
+        return r;
+    }
+
+    static constexpr Mat<T, 3, 3> MakeRotationZ(T radians)
+        requires(Row == 3 && Col == 3)
+    {
+        Mat<T, 3, 3> r = Mat<T, 3, 3>::MakeIdentity();
+        T c = std::cos(radians);
+        T s = std::sin(radians);
+        r[0, 0] = c; r[0, 1] = -s;
+        r[1, 0] = s; r[1, 1] = c;
+        return r;
+    }
+
+    // 缩放矩阵 (仅方阵)
+    template <Detail::NumericVec U>
+        requires(Row == Col)
+    static constexpr Mat<T, Row, Col> MakeScale(const Vec<U, Row> &scale)
+    {
+        Mat<T, Row, Col> result = Mat<T, Row, Col>::MakeIdentity();
+        for (size_t i = 0; i < Row; ++i)
+            result[i, i] = static_cast<T>(scale[i]);
+        return result;
+    }
+
+    // 平移矩阵 (仅 4x4)
+    template <Detail::NumericVec U>
+        requires(Row == 4 && Col == 4)
+    static constexpr Mat<T, 4, 4> MakeTranslation(const Vec<U, 3> &translation)
+    {
+        Mat<T, 4, 4> result = Mat<T, 4, 4>::MakeIdentity();
+        result[3, 0] = static_cast<T>(translation[0]);
+        result[3, 1] = static_cast<T>(translation[1]);
+        result[3, 2] = static_cast<T>(translation[2]);
+        return result;
+    }
+
+    // 3D 视图矩阵 (仅 4x4)
+    template <Detail::NumericVec U>
+        requires(Row == 4 && Col == 4)
+    static constexpr Mat<T, 4, 4> MakeView(const Vec<U, 3> &camera_pos, const Vec<U, 3> &camera_direction, const Vec<U, 3> &camera_up)
+    {
+        Vec<T, 3> direction = Vec<T, 3>(camera_direction);
+        Vec<T, 3> front = Normalize(direction);
+        Vec<T, 3> right = Normalize(direction ^ Vec<T, 3>(camera_up));
+        Vec<T, 3> up = Normalize(right ^ direction);
+
+        Mat<T, 4, 4> rotation_matrix = Mat<T, 4, 4>::MakeIdentity();
+        Mat<T, 4, 4> translation_matrix = Mat<T, 4, 4>::MakeIdentity();
+
+        rotation_matrix[0, 0] = right[0];
+        rotation_matrix[0, 1] = right[1];
+        rotation_matrix[0, 2] = right[2];
+        rotation_matrix[1, 0] = up[0];
+        rotation_matrix[1, 1] = up[1];
+        rotation_matrix[1, 2] = up[2];
+        rotation_matrix[2, 0] = front[0];
+        rotation_matrix[2, 1] = front[1];
+        rotation_matrix[2, 2] = front[2];
+
+        translation_matrix[3, 0] = -static_cast<T>(camera_pos[0]);
+        translation_matrix[3, 1] = -static_cast<T>(camera_pos[1]);
+        translation_matrix[3, 2] = -static_cast<T>(camera_pos[2]);
+
+        return rotation_matrix * translation_matrix;
+    }
+
+    // 2D 视图矩阵 (仅 4x4)
+    static constexpr Mat<T, 4, 4> MakeView(const Vec<T, 2> &pos, T rotation_radians, T zoom)
+        requires(Row == 4 && Col == 4)
+    {
+        Mat<T, 4, 4> mat{};
+        T cos_r = std::cos(rotation_radians);
+        T sin_r = std::sin(rotation_radians);
+
+        mat[0, 0] = cos_r * zoom;
+        mat[0, 1] = sin_r * zoom;
+        mat[0, 3] = -(pos[0] * cos_r + pos[1] * sin_r) * zoom;
+
+        mat[1, 0] = -sin_r * zoom;
+        mat[1, 1] = cos_r * zoom;
+        mat[1, 3] = (pos[0] * sin_r - pos[1] * cos_r) * zoom;
+
+        mat[2, 2] = 1;
+        mat[3, 3] = 1;
+        return mat;
+    }
+
+    // 视图矩阵 (LookAt, 仅 4x4, 复用 MakeView)
+    template <Detail::NumericVec U>
+        requires(Row == 4 && Col == 4)
+    static constexpr Mat<T, 4, 4> MakeLookAt(const Vec<U, 3> &eye, const Vec<U, 3> &center, const Vec<U, 3> &up)
+    {
+        return MakeView(eye, center - eye, up);
+    }
+
+    // 透视投影矩阵 (仅 4x4)
+    static constexpr Mat<T, 4, 4> MakeProjection(T fov_radians, T aspect, T near, T far)
+        requires(Row == 4 && Col == 4)
+    {
+        Mat<T, 4, 4> mat{};
+        T tanHalfFov = std::tan(fov_radians / static_cast<T>(2));
+
+        mat[0, 0] = static_cast<T>(1) / (aspect * tanHalfFov);
+        mat[1, 1] = static_cast<T>(1) / tanHalfFov;
+        mat[2, 2] = -(far + near) / (far - near);
+        mat[2, 3] = -(static_cast<T>(2) * far * near) / (far - near);
+        mat[3, 2] = static_cast<T>(-1);
+        return mat;
+    }
+
+    // 正交投影矩阵 (仅 4x4)
+    static constexpr Mat<T, 4, 4> MakeProjection(T left, T right, T bottom, T top, T near, T far)
+        requires(Row == 4 && Col == 4)
+    {
+        Mat<T, 4, 4> mat{};
+
+        mat[0, 0] = static_cast<T>(2) / (right - left);
+        mat[1, 1] = static_cast<T>(2) / (top - bottom);
+        mat[2, 2] = -static_cast<T>(2) / (far - near);
+
+        mat[0, 3] = -(right + left) / (right - left);
+        mat[1, 3] = -(top + bottom) / (top - bottom);
+        mat[2, 3] = -(far + near) / (far - near);
+        mat[3, 3] = static_cast<T>(1);
+        return mat;
+    }
+
+    // 简单正交投影矩阵 (仅 4x4)
+    static constexpr Mat<T, 4, 4> MakeProjection(T width, T height)
+        requires(Row == 4 && Col == 4)
+    {
+        T half_w = width / static_cast<T>(2);
+        T half_h = height / static_cast<T>(2);
+        return MakeProjection(-half_w, half_w, half_h, -half_h, static_cast<T>(-1), static_cast<T>(1));
+    }
+
+    // ===================== 实例 Set 方法 =====================
+
+    // 就地填充标量
+    constexpr Mat &SetValue(T value)
+    {
+        for (size_t i = 0; i < Row * Col; ++i)
+            m_data[i] = value;
+        return *this;
+    }
+
+    // 就地设为单元矩阵 (仅方阵)
+    constexpr Mat &SetIdentity()
+    {
+        static_assert(Row == Col, "Identity matrix must be square.");
+        m_data.fill(static_cast<T>(0));
+        for (size_t i = 0; i < Row; ++i)
+            m_data[i * Col + i] = static_cast<T>(1);
+        return *this;
+    }
+
+    // 就地设置第 row 行
+    template <Detail::NumericVec U>
+    constexpr Mat &SetRow(size_t row, const Vec<U, Col> &values)
+    {
+        assert(row < Row);
+        for (size_t c = 0; c < Col; ++c)
+            m_data[row * Col + c] = static_cast<T>(values[c]);
+        return *this;
+    }
+
+    // 就地设置第 col 列
+    template <Detail::NumericVec U>
+    constexpr Mat &SetCol(size_t col, const Vec<U, Row> &values)
+    {
+        assert(col < Col);
+        for (size_t r = 0; r < Row; ++r)
+            m_data[r * Col + col] = static_cast<T>(values[r]);
+        return *this;
+    }
+
     // 析构
     ~Mat() = default;
 
@@ -221,16 +442,14 @@ public:
         return std::vector<U>(m_data.begin(), m_data.end());
     }
 
-    template <Detail::NumericMat U>
-    constexpr operator std::span<U, Row *Col>() 
+    constexpr operator std::span<T, Row * Col>()
     {
-        return std::span<U, Row * Col>(m_data.begin(), m_data.end());
+        return std::span<T, Row * Col>(m_data.data(), Row * Col);
     }
 
-    template <Detail::NumericMat U>
-    constexpr operator std::span<const U, Row *Col>() const
+    constexpr operator std::span<const T, Row * Col>() const
     {
-        return std::span<const U, Row * Col>(m_data.begin(), m_data.end());
+        return std::span<const T, Row * Col>(m_data.data(), Row * Col);
     }
 
     // 指针转换
@@ -260,6 +479,16 @@ public:
     {
         assert(row < Row && col < Col);
         return m_data[row * Col + col];
+    }
+
+    constexpr T &operator[](Detail::CompileTimeIndexCheckMat<Row * Col> index)
+    {
+        return m_data[index.value];
+    }
+
+    constexpr const T &operator[](Detail::CompileTimeIndexCheckMat<Row * Col> index) const
+    {
+        return m_data[index.value];
     }
 
     template <int RStart, int REnd, int RStep,
@@ -586,20 +815,21 @@ public:
     {
         static_assert(Row == Col, "operator*= is only supported for square matrices to maintain dimensions.");
 
-        Mat<T, Row, Col> temp;
+        using R = std::common_type_t<T, U>;
+        Mat<R, Row, Col> temp;
         for (size_t r = 0; r < Row; ++r)
         {
             for (size_t c = 0; c < Col; ++c)
             {
-                T sum = 0;
+                R sum = 0;
                 for (size_t k = 0; k < Col; ++k)
                 {
-                    sum += (*this)[r, k] * static_cast<T>(rhs[k, c]);
+                    sum += static_cast<R>((*this)[r, k]) * static_cast<R>(rhs[k, c]);
                 }
                 temp[r, c] = sum;
             }
         }
-        *this = temp;
+        *this = Mat<T, Row, Col>(temp);
         return *this;
     }
 
@@ -653,6 +883,25 @@ public:
 
     static const std::type_info &ValueType() noexcept { return typeid(T); }
 };
+
+// 向量与矩阵复合乘法 v *= m（与 Mat*Vec / Vec*Mat 的 operator* 归位在同一头文件）
+template <Detail::NumericMat T, Detail::NumericMat U, size_t N>
+constexpr auto &operator*=(Vec<U, N> &lhs, const Mat<T, N, N> &rhs)
+{
+    using R = std::common_type_t<T, U>;
+    Vec<R, N> temp;
+    for (size_t c = 0; c < N; ++c)
+    {
+        R sum = 0;
+        for (size_t r = 0; r < N; ++r)
+        {
+            sum += static_cast<R>(lhs[r]) * static_cast<R>(rhs[r, c]);
+        }
+        temp[c] = sum;
+    }
+    lhs = Vec<U, N>(temp);
+    return lhs;
+}
 
 // 标量与矩阵的混合运算（非友元，避免模板重定义冲突）
 template <Detail::NumericMat T, size_t Row, size_t Col, Detail::NumericMat U>
@@ -848,7 +1097,7 @@ private:
 
 public:
     // 构造函数
-    MatView(Mat<T, Row, Col> &mat, RowRange rr, ColRange rc) : _original_mat(mat) {}
+    MatView(Mat<T, Row, Col> &mat, RowRange, ColRange) : _original_mat(mat) {}
 
     // 赋值
     template <Detail::NumericMat U>
@@ -899,7 +1148,7 @@ public:
     template <Detail::NumericMat U>
     constexpr MatView &operator=(const std::vector<U> &vec)
     {
-        if (vec.Size() != RowRange::Size() * ColRange::Size())
+        if (vec.size() != RowRange::Size() * ColRange::Size())
         {
             throw std::runtime_error("Size mismatch");
         }
@@ -917,7 +1166,7 @@ public:
     template <Detail::NumericMat U>
     constexpr MatView &operator=(const std::list<U> &list)
     {
-        if (list.Size() != RowRange::Size() * ColRange::Size())
+        if (list.size() != RowRange::Size() * ColRange::Size())
         {
             throw std::runtime_error("Size mismatch");
         }
